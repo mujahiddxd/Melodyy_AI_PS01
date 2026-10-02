@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -7,10 +7,56 @@ from app.errors import api_error
 from app.models import Product, Shop
 from app.schemas.customer import DeliveryCheckIn, DeliveryCheckOut
 from app.schemas.product import CategoryGroup, ProductPublic, PublicShopOut
-from app.schemas.shop import GeoResult, ShopPublic
+from app.schemas.shop import GeoResult, ShopCard, ShopList, ShopPublic
 from app.services import geo
 
 router = APIRouter(tags=["public"])
+
+
+LIKE_ESCAPE = "!"
+
+
+def _like(term: str) -> str:
+    """A contains-pattern for `term` in which %, _ and the escape character are plain characters, so a search for
+    "100%" or "a_b" does not match everything."""
+    for ch in (LIKE_ESCAPE, "%", "_"):
+        term = term.replace(ch, LIKE_ESCAPE + ch)
+    return f"%{term}%"
+
+
+@router.get("/shops", response_model=ShopList)
+def list_shops(
+    q: str = Query(default="", max_length=100),
+    page: int = Query(default=1, ge=1, le=10000),
+    page_size: int = Query(default=12, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    """Shops a customer can browse: those that finished setup (name, map location and delivery radius), the same rule
+    the shop page uses to enable ordering. A shop appears here as soon as its owner saves its location. `q` matches
+    the shop name or address, case-insensitively. Open shops come first."""
+    configured = (
+        Shop.name != "", Shop.lat.is_not(None), Shop.lng.is_not(None), Shop.delivery_radius_km.is_not(None),
+    )
+    where = list(configured)
+    # every word must appear in the name or the address ("sharma kothrud" finds Sharma Kirana, Karve Road, Kothrud)
+    for word in q.split()[:6]:
+        pattern = _like(word)
+        where.append(or_(Shop.name.ilike(pattern, escape=LIKE_ESCAPE),
+                         Shop.address_text.ilike(pattern, escape=LIKE_ESCAPE)))
+
+    total = db.scalar(select(func.count()).select_from(Shop).where(*where)) or 0
+    count = (
+        select(func.count(Product.id)).where(Product.shop_id == Shop.id, Product.is_active.is_(True))
+        .correlate(Shop).scalar_subquery()
+    )
+    rows = db.execute(
+        select(Shop, count.label("product_count")).where(*where)
+        .order_by(Shop.is_open.desc(), func.lower(Shop.name), Shop.id)
+        .limit(page_size).offset((page - 1) * page_size)
+    ).all()
+    items = [ShopCard.model_validate({**{f: getattr(s, f) for f in ShopCard.model_fields if f != "product_count"},
+                                      "product_count": n}) for s, n in rows]
+    return ShopList(items=items, total=total, page=page, page_size=page_size, has_more=page * page_size < total)
 
 
 @router.get("/shops/{slug}", response_model=PublicShopOut)

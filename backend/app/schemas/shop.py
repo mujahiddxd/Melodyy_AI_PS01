@@ -58,6 +58,33 @@ class ShopPublic(BaseModel):
     is_open: bool
 
 
+class ShopCard(BaseModel):
+    """One shop in the public list. A strict subset of what GET /shops/{slug} already shows publicly: no owner, no UPI
+    ID, no coordinates."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    slug: str
+    description: str | None
+    address_text: str | None
+    photo_url: str | None
+    is_open: bool
+    delivery_radius_km: float | None
+    min_order_value: Money
+    delivery_fee: Money
+    product_count: int = 0
+
+
+class ShopList(BaseModel):
+    items: list[ShopCard]
+    total: int
+    page: int
+    page_size: int
+    has_more: bool
+
+
 class ShopOwner(ShopPublic):
     photo_public_id: str | None
     is_configured: bool

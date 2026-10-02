@@ -44,3 +44,10 @@ export function maskPhone(phone: string): string {
 export function km(v: number): string {
   return `${Number(v.toFixed(v < 10 ? 1 : 0))} km`;
 }
+
+/** "09:41 am" in the viewer's timezone. */
+export function clock(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}

@@ -83,7 +83,7 @@ Unexpected server failure (status 500): `{ "detail": "Something went wrong. Plea
 | `ConversationStatus` | `open`, `closed` |
 | `Language` | `hinglish`, `hindi`, `marathi`, `english` |
 | `Script` | `latin`, `devanagari` |
-| `Intent` | `new_order`, `add_items`, `remove_items`, `change_quantity`, `answer_clarification`, `confirm`, `cancel`, `repeat_last_order`, `status_query`, `gibberish`, `other` |
+| `Intent` | `new_order`, `add_items`, `remove_items`, `change_quantity`, `answer_clarification`, `confirm`, `cancel`, `repeat_last_order`, `status_query`, `availability_query`, `gibberish`, `other` |
 | `AgentName` | `intake`, `parser`, `matcher`, `inventory`, `clarifier`, `billing`, `messaging`, `stt`, `ocr`, `explainer` |
 | `AgentStatus` | `running`, `success`, `error`, `skipped` |
 | `SellMode` | `pack`, `loose` |
@@ -116,12 +116,15 @@ Customer actions: only `draft`, `needs_clarification`, `awaiting_confirmation` (
 
 **Order item**
 ```json
-{ "id": 71, "product_id": 3, "product_name": "Atta (Loose)", "raw_text": "2 kilo atta", "name_guess": "atta", "quantity_value": "2.000", "unit": "kg", "normalized_qty": "2.000", "product_qty": "2.000", "unit_price_snapshot": "45.00", "line_total": "90.00", "confidence": 0.93, "status": "matched", "candidates": [], "source_span": [7, 18], "parent_item_id": null }
+{ "id": 71, "product_id": 3, "product_name": "Atta (Loose)", "raw_text": "2 kilo atta", "name_guess": "atta", "quantity_value": "2.000", "unit": "kg", "normalized_qty": "2.000", "product_qty": "2.000", "unit_price_snapshot": "45.00", "line_total": "90.00", "confidence": 0.93, "status": "matched", "candidates": [], "source_span": [7, 18], "parent_item_id": null,
+  "product": { "id": 3, "name": "Atta (Loose)", "brand": null, "sell_mode": "loose", "pack_size": "1.000", "pack_unit": "kg", "price": "45.00", "stock_status": "in_stock" } }
 ```
+Stage 3 notes: `status` is one of `matched | ambiguous | out_of_stock | unmatched | vague_qty | removed`. `product_id`, `product_name` and `product` are `null` while the item is `ambiguous` or `unmatched`. `quantity_value` / `unit` are the customer's quantity after unit normalisation (`"half kilo"` -> `"0.500"` `kg`); both are `null` when the quantity was vague or not given. `product_qty` is the number of packs (pack products) or base units (loose products, e.g. kg). `unit_price_snapshot` and `line_total` stay `null` until the quote (Stage 4). `confidence` is 0..1 (badge: green >= 0.85, amber 0.6-0.85, red < 0.6). `candidates` lists what the matcher considered (`product_id`, `label`, `pack`, `price`, `stock_status`, `score`). `product` carries the live catalog price for display only; billing happens in Stage 4.
 **Clarification**
 ```json
-{ "id": 9, "order_item_id": 72, "kind": "ambiguous_product", "question": "Kaunsa tel chahiye?", "options": [ { "product_id": 14, "label": "Fortune Sunflower 1L", "price": "155.00", "stock_status": "in_stock" } ], "answer": null, "resolved_at": null }
+{ "id": 9, "order_item_id": 72, "kind": "ambiguous_product", "question": "Kaunsa tel chahiye?", "options": [ { "product_id": 14, "label": "Fortune Sunflower Oil 1L", "pack": "1 L", "price": "155.00", "stock_status": "in_stock" } ], "answer": null, "resolved_at": null }
 ```
+`options` are always built by the backend from database products (never from LLM text). They are empty for `vague_qty` and for `unmatched` (answer with text). `kind = out_of_stock` options are in-stock alternatives. `answer` is `{ "option_product_id": 14 }` or `{ "text": "..." }` once resolved.
 **Order**
 ```json
 { "id": 42, "order_no": 1042, "shop_id": 1, "conversation_id": 7, "status": "needs_clarification", "requires_reapproval": false, "items": [], "clarifications": [], "subtotal": "0.00", "discount": "0.00", "delivery_fee": "0.00", "total": "0.00", "delivery_address_text": null, "delivery_lat": null, "delivery_lng": null, "distance_km": null, "requested_delivery_text": "kal subah tak", "requested_delivery_at": "2026-10-03T02:30:00Z", "payment_method": null, "payment_status": null, "quoted_at": null, "confirmed_at": null, "created_at": "2026-10-02T09:30:00Z" }
@@ -218,6 +221,14 @@ Auth: none. Backend proxy to the Google Geocoding API (key in `GOOGLE_MAPS_API_K
 ```
 Empty/too-short `q`, a Google error (e.g. `REQUEST_DENIED`) or a missing key: `200 []` (map click and GPS still work). The key is never returned or logged.
 
+### GET /shops?q=&page=1&page_size=12
+Auth: none. Customer shop discovery (the homepage list). Lists shops that finished setup (name, map location and delivery radius all set), the same rule that enables ordering on the shop page, so a shop appears here as soon as its owner saves its location and never needs to be added by hand. Closed shops are listed with `is_open: false` and sorted after open ones; within each group by name. Query: `q` (max 100 characters; optional) = words that must **all** appear in the shop name or address, case-insensitive (`%` and `_` are plain characters); `page` >= 1; `page_size` 1-50 (default 12). Response `200`:
+```json
+{ "items": [ { "id": 22, "name": "Sharma Kirana", "slug": "sharma-kirana", "description": "Your neighbourhood kirana store.", "address_text": "Shop 4, Karve Road, Kothrud, Pune", "photo_url": "https://res.cloudinary.com/.../shop.jpg", "is_open": true, "delivery_radius_km": 3.0, "min_order_value": "0.00", "delivery_fee": "0.00", "product_count": 43 } ],
+  "total": 1, "page": 1, "page_size": 12, "has_more": false }
+```
+`product_count` counts active products. A page past the end returns `items: []`. No owner details, UPI ID or coordinates are returned. Errors: `422` for invalid `page` / `page_size` / over-long `q`. "View shop" links to `/shop/{slug}` (`GET /shops/{slug}` below, unchanged).
+
 ### GET /shops/{slug}
 Auth: none. Response `200`:
 ```json
@@ -227,7 +238,7 @@ Only active products. `404` if the slug is unknown.
 
 ---
 
-## 4. Stage 2 — Customer OTP, addresses, delivery check (LIVE, except `claim`)
+## 4. Stage 2 — Customer OTP, addresses, delivery check (LIVE)
 
 Browsing (`GET /shops/{slug}`), `delivery-check` and chat need no login. Only a successful OTP verify issues a customer token.
 
@@ -281,52 +292,80 @@ Auth: none (guests can check). Request: `{ "lat": 18.51, "lng": 73.81 }`. Respon
 Boundary is inclusive (`distance <= radius`), decided on the unrounded distance. `distance_km` is rounded to 2 decimals. Distance is straight-line haversine (R = 6371 km). The same `check_delivery()` runs again at order confirm (Stage 4).
 Errors: `404` unknown slug, `422 SHOP_LOCATION_NOT_SET` (`"<shop> hasn't set its delivery area yet."`), `422` invalid lat/lng.
 
-### POST /conversations/{id}/claim — PLANNED (Stage 3, needs conversations)
-Auth: customer Bearer **and** `X-Guest-Session` of that conversation. Attaches the guest conversation (and its open order) to the customer. Response `200`: `{ "conversation_id": 7, "customer_id": 5 }`.
+(`POST /conversations/{id}/claim` is documented in section 5.)
 
 ---
 
-## 5. Stage 3 — Conversations and AI text ordering (PLANNED)
+## 5. Stage 3 — Conversations and AI text ordering (LIVE)
+
+Pipeline per message (all synchronous, typically 3-8 s; slower when the LLM provider is busy): **Intake** (language, script, gibberish) → **Parser** (LLM: intent + items, no prices/ids) → unit normalizer → **Matcher** (rapidfuzz; LLM re-rank only among given candidate ids) → **Inventory** (read-only stock check) → **Clarifier** (ONE combined message) → **Messaging**. Every step writes an `agent_runs` row. Prices, stock and totals come only from the database. Inventory is **never** changed in this stage.
+
+Guardrails: message <= 1,000 characters; <= 30 items per message (more: polite refusal, nothing saved); invalid LLM output or LLM down -> `502 LLM_FAILED`, nothing is written to the order.
+
+Auth for all conversation endpoints ("session"): header `X-Guest-Session: <token>` (issued once at creation) **or** `Authorization: Bearer <customer_jwt>` of the customer the conversation belongs to. No credential -> `401 UNAUTHORIZED`; unknown id -> `404 NOT_FOUND`; someone else's conversation -> `403 FORBIDDEN`. The guest token is stored only as a SHA-256 hash.
 
 ### POST /shops/{slug}/conversations
-Auth: none, or customer Bearer. Response `201`:
+Auth: none (guest) or customer Bearer (a verified customer's conversation is linked to them and gets no guest token). Response `201`:
 ```json
-{ "conversation": { "id": 7, "shop_id": 1, "language": null, "script": null, "status": "open", "created_at": "..." }, "guest_session": "gs_9f2c...", "messages": [], "order": null }
+{ "conversation": { "id": 7, "shop_id": 1, "language": null, "script": null, "status": "open", "created_at": "..." },
+  "guest_session": "gs_9f2c...", "messages": [], "order": null, "llm_mock": false }
 ```
-`guest_session` is `null` when called with a customer token.
+`guest_session` is `null` when called with a customer token. `llm_mock` is `true` when the backend runs with `LLM_MOCK=true` (the UI then shows a **DEMO / MOCK AI** badge). `language` / `script` are filled after the first message (`hinglish | hindi | marathi | english`, `latin | devanagari`). `404` unknown slug.
 
 ### GET /conversations/{id}
 Auth: session. Response `200`:
 ```json
-{ "conversation": { "...": "..." }, "messages": [ "<Message>" ], "order": "<Order> | null", "agent_runs": [ "<AgentRun> (latest message only)" ] }
+{ "conversation": { "...": "..." }, "messages": [ "<Message>" ], "order": "<Order> | null", "agent_runs": [ "<AgentRun> (of the latest message only)" ], "llm_mock": false }
 ```
+`order` is the open order of the conversation (`draft | needs_clarification | awaiting_confirmation`), else the latest order, else `null`.
+
+### POST /conversations/{id}/claim
+Auth: customer Bearer **and** `X-Guest-Session` of that conversation. Attaches the guest conversation (and its orders) to the customer after OTP. Idempotent for the same customer. Response `200`: `{ "conversation_id": 7, "customer_id": 5 }`. `403 FORBIDDEN` when the guest session does not match or the conversation already belongs to another customer.
 
 ### POST /conversations/{id}/messages
-Auth: session. Runs the orchestrator **synchronously** (typically 3-8 s). Request (max 1,000 chars):
+Auth: session. Runs the orchestrator **synchronously**. Request:
 ```json
 { "type": "text", "content": "bhaiya 2 kilo atta, ek Amul butter aur sugar half kilo, tel bhi chahiye" }
 ```
 Response `200`:
 ```json
 {
-  "messages": [ { "id": 300, "sender": "customer", "type": "text", "content": "bhaiya 2 kilo atta, ...", "created_at": "..." },
-                { "id": 301, "sender": "bot", "type": "text", "content": "Kaunsa tel chahiye - sunflower, groundnut ya mustard? Aur 1L ya 5L?", "meta": { "clarification_ids": [9] }, "created_at": "..." } ],
-  "order": "<Order>",
+  "messages": [ { "id": 300, "sender": "customer", "type": "text", "content": "bhaiya 2 kilo atta, ...", "meta": null, "created_at": "..." },
+                { "id": 301, "sender": "bot", "type": "text", "content": "Amul Butter 100g abhi stock mein nahi hai ... tel kaunsa chahiye ...", "meta": { "order_id": 42, "clarification_ids": [9, 10] }, "created_at": "..." } ],
+  "order": "<Order> | null",
   "agent_runs": [ "<AgentRun>" ]
 }
 ```
-Gibberish input: `messages` has the bot's "please repeat" reply, `order` is `null`/unchanged, no order rows created.
-Errors: `422 MESSAGE_TOO_LONG`, `502 LLM_FAILED` (the bot also stores a friendly "Thoda problem hua, dobara bhejiye" message; nothing is written to the order).
+- `messages` = the customer's message followed by the bot's reply. `meta.clarification_ids` lists the open clarifications the bot is asking about (the UI shows their `options` as chips).
+- The order moves to `needs_clarification` if any clarification is open, otherwise `awaiting_confirmation` (bot: "Order ready ✅ Bill banaun?"; the bill itself is Stage 4). Items parsed from later messages are added to the same open order.
+- The bot replies in the customer's language **and script** (Hinglish, Hindi in Devanagari, Marathi in Devanagari, English).
+- Gibberish or non-grocery text: `order` is `null` (or unchanged if an order already exists), no order rows are created, the bot asks the customer to repeat / redirects.
+- Availability questions ("Shakkar hai?", "kya aapke paas atta hai", intent `availability_query`) are answered from the shop catalog and the stock in the database: matching products with every pack size, price, "sirf N bacha" for low stock, "stock mein nahi" plus in-stock alternatives, or "not found". The answer is built from database rows (no LLM wording), is read only, and **never adds anything to the order** or changes it (the pending chips stay visible). `agent_runs`: `intake, parser, inventory, messaging`. A `status_query` that names a product is treated the same way.
+- Question or request? Clear words decide, whatever the LLM labelled it: an ordering verb ("de do", "chahiye", "bhej") means a request; a question word ("hai", "milega", "available", "?") without one means an availability question. So "ek kilo buscuit hai" never adds an item, while "ek kilo buscuit de do" does. A question that names a quantity also says how it could be served ("1 kg ke liye Parle-G 250g ×4 mil jayega") or that stock is short.
+- When items are added and nothing is left open, the reply names them: "Jod diya: Parle-G 250g ×4. Order ready hai ✅ Bill banaun?", so it never repeats the previous reply.
+- A short "haan, bill bana do" with nothing pending reads the draft back and says nothing is confirmed yet (billing and confirming are Stage 4); with a pending question it asks for that answer first. A short "nahi" / "rehne do" keeps the draft ("bill abhi nahi banata"); with an open question, "nahi" skips that item only. "ruko" keeps the draft untouched.
+- Unsupported intents (cancel the order, remove, change quantity, repeat last order, a question about the order's own status) get a polite "coming soon" reply with no order change (Stages 4-5).
+- A reply that answers an open question ("sunflower wala") is routed to that clarification automatically.
+- `agent_runs` order: `intake, parser, matcher, inventory, clarifier, messaging` (`clarifier` has `status: "skipped"` when nothing is open; gibberish stops after `intake`, then `messaging`).
+
+Errors:
+- `422 MESSAGE_TOO_LONG` (over 1,000 characters), `422 VALIDATION_ERROR` (empty message).
+- `502 LLM_FAILED`: the customer's message is kept and a friendly bot message ("Thoda problem hua, dobara bhejiye", localised) is stored; **nothing** is written to the order. The error body carries both messages so the chat can show them:
+```json
+{ "detail": { "code": "LLM_FAILED", "message": "The AI helper is unavailable right now. Please try again.",
+              "messages": [ "<Message customer>", "<Message bot, meta.error = \"LLM_FAILED\">" ], "agent_runs": [ "<AgentRun>" ] } }
+```
 
 ### POST /conversations/{id}/clarifications/{cid}/answer
-Auth: session. Request (one of):
+Auth: session. Request (exactly one of):
 ```json
 { "option_product_id": 14 }
 ```
 ```json
 { "text": "sunflower wala 1 litre" }
 ```
-`option_product_id` must be one of the clarification's `options` (otherwise `422`). Re-runs Matcher + Inventory + Clarifier for that item only. Response `200`: same shape as `POST /conversations/{id}/messages`. When nothing is left open the order moves to `awaiting_confirmation`.
+`option_product_id` must be one of the clarification's `options` (otherwise `422 VALIDATION_ERROR`). Free text is matched deterministically against the offered products (a quantity-only text like `"2 kilo"` answers a `vague_qty` question; `"skip"` / `"nahi chahiye"` removes the item, status `removed`). Re-runs Matcher + Inventory + Clarifier for that **one item**. The customer's tap or text is stored as a customer message (`meta.clarification_id`, `meta.option_product_id`). Response `200`: same shape as `POST /conversations/{id}/messages`, `agent_runs` = `matcher, inventory, clarifier, messaging`. If the answer is not understood, nothing changes and the bot asks again. When nothing is left open the order moves to `awaiting_confirmation`.
+Errors: `404 NOT_FOUND` (not a clarification of this conversation), `409 CONFLICT` (already answered), `409 INVALID_TRANSITION` (order no longer open), `422 VALIDATION_ERROR`, `422 MESSAGE_TOO_LONG`, `502 LLM_FAILED` (as above).
 
 ---
 
@@ -476,3 +515,5 @@ Khata / udhaar / credit: **no endpoints, tables or UI.** Real WhatsApp Business 
 
 ## 12. Change log
 - 2026-10-02: Initial contract (Stage 0). `/health` LIVE; all other Appendix D endpoints specified as PLANNED.
+- 2026-10-02: `GET /shops` (public shop list with search + pagination) added for customer shop discovery.
+- 2026-10-02: Stage 3 LIVE: conversations, claim, messages, clarification answers. Order item gains `product`; clarification options gain `pack`; conversation responses gain `llm_mock`; new parser intent `availability_query`; `502 LLM_FAILED` body carries the stored `messages`.

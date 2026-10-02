@@ -151,3 +151,187 @@ export interface DeliveryCheck {
   distance_km: number;
   radius_km: number;
 }
+
+// ---- Conversations and AI ordering (Stage 3)
+export type OrderStatus =
+  | "draft"
+  | "needs_clarification"
+  | "awaiting_confirmation"
+  | "confirmed"
+  | "packing"
+  | "out_for_delivery"
+  | "delivered"
+  | "cancelled";
+
+export type OrderItemStatus =
+  | "matched"
+  | "ambiguous"
+  | "out_of_stock"
+  | "unmatched"
+  | "vague_qty"
+  | "removed"
+  | "substituted"
+  | "pending_amendment";
+
+export type ClarificationKind =
+  | "ambiguous_product"
+  | "pack_size"
+  | "out_of_stock"
+  | "unmatched"
+  | "vague_qty"
+  | "unusual_qty"
+  | "price_change";
+
+export type AgentName =
+  | "intake"
+  | "parser"
+  | "matcher"
+  | "inventory"
+  | "clarifier"
+  | "billing"
+  | "messaging"
+  | "stt"
+  | "ocr"
+  | "explainer";
+
+export interface ConversationInfo {
+  id: number;
+  shop_id: number;
+  language: string | null;
+  script: string | null;
+  status: "open" | "closed";
+  created_at: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  conversation_id: number;
+  sender: "customer" | "bot" | "shopkeeper" | "system";
+  type: "text" | "audio" | "image" | "system" | "bill";
+  content: string;
+  media_url: string | null;
+  meta: { clarification_ids?: number[]; order_id?: number; [k: string]: unknown } | null;
+  created_at: string;
+}
+
+export interface AgentRun {
+  id: number;
+  agent: AgentName;
+  status: "running" | "success" | "error" | "skipped";
+  input: unknown;
+  output: unknown;
+  error: string | null;
+  started_at: string;
+  duration_ms: number | null;
+}
+
+export interface ProductSummary {
+  id: number;
+  name: string;
+  brand: string | null;
+  sell_mode: SellMode;
+  pack_size: string;
+  pack_unit: PackUnit;
+  price: string;
+  stock_status: StockStatus;
+}
+
+export interface OrderItem {
+  id: number;
+  product_id: number | null;
+  product_name: string | null;
+  raw_text: string;
+  name_guess: string;
+  quantity_value: string | null;
+  unit: string | null;
+  normalized_qty: string | null;
+  product_qty: string | null;
+  unit_price_snapshot: string | null;
+  line_total: string | null;
+  confidence: number;
+  status: OrderItemStatus;
+  candidates: unknown[];
+  source_span: [number, number] | null;
+  parent_item_id: number | null;
+  product: ProductSummary | null;
+}
+
+export interface ClarificationOption {
+  product_id: number;
+  label: string;
+  pack: string;
+  price: string;
+  stock_status: StockStatus;
+}
+
+export interface Clarification {
+  id: number;
+  order_item_id: number;
+  kind: ClarificationKind;
+  question: string;
+  options: ClarificationOption[];
+  answer: Record<string, unknown> | null;
+  resolved_at: string | null;
+}
+
+export interface Order {
+  id: number;
+  order_no: number;
+  shop_id: number;
+  conversation_id: number;
+  status: OrderStatus;
+  requires_reapproval: boolean;
+  items: OrderItem[];
+  clarifications: Clarification[];
+  subtotal: string;
+  discount: string;
+  delivery_fee: string;
+  total: string;
+  requested_delivery_text: string | null;
+  created_at: string;
+}
+
+export interface CreateConversationResponse {
+  conversation: ConversationInfo;
+  guest_session: string | null;
+  messages: ChatMessage[];
+  order: Order | null;
+  llm_mock: boolean;
+}
+
+export interface ConversationState {
+  conversation: ConversationInfo;
+  messages: ChatMessage[];
+  order: Order | null;
+  agent_runs: AgentRun[];
+  llm_mock: boolean;
+}
+
+export interface ChatResponse {
+  messages: ChatMessage[];
+  order: Order | null;
+  agent_runs: AgentRun[];
+}
+
+// ---- Shop discovery
+export interface ShopCard {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  address_text: string | null;
+  photo_url: string | null;
+  is_open: boolean;
+  delivery_radius_km: number | null;
+  min_order_value: string;
+  delivery_fee: string;
+  product_count: number;
+}
+
+export interface ShopListResponse {
+  items: ShopCard[];
+  total: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
+}

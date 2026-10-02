@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from app.config import get_settings
 from app.db import engine
-from app.routers import auth, customer, customer_auth, owner_products, owner_shop, public
+from app.routers import auth, conversations, customer, customer_auth, owner_products, owner_shop, public
 from app.services.storage import UPLOAD_DIR
 
 log = logging.getLogger("hod")
@@ -31,6 +31,7 @@ app.include_router(owner_products.router)
 app.include_router(public.router)
 app.include_router(customer_auth.router)
 app.include_router(customer.router)
+app.include_router(conversations.router)
 
 # Local storage fallback for photos (used when CLOUDINARY_URL is empty)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)

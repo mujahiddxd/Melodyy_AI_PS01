@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BackendStatus } from "@/components/BackendStatus";
+import { ShopDiscovery } from "@/components/shops/ShopDiscovery";
 import { MockBadge } from "@/components/ui/MockBadge";
 
 const STARBURST =
@@ -28,8 +29,11 @@ export default function Home() {
             check stock, ask one short question if needed, and send a clean bill.
           </p>
           <div className="mt-8 flex flex-wrap gap-4">
-            <Link href="/shop/sharma-kirana" className="btn-primary">
-              → Open demo shop
+            <a href="#shops" className="btn-primary">
+              → Browse shops
+            </a>
+            <Link href="/shop/sharma-kirana" className="btn-secondary">
+              Open demo shop
             </Link>
             <Link href="/owner/login" className="btn-secondary">
               Shopkeeper login
@@ -61,6 +65,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      <ShopDiscovery />
     </main>
   );
 }
