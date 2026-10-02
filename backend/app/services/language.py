@@ -146,10 +146,10 @@ FIXED = {
         "english": "Thoda problem hua, dobara bhejiye",
     },
     "ready": {
-        "hinglish": "Order ready hai ✅ Bill banaun?",
-        "hindi": "ऑर्डर तैयार है ✅ बिल बनाऊँ?",
-        "marathi": "ऑर्डर तयार आहे ✅ बिल बनवू?",
-        "english": "Your order is ready ✅ Shall I make the bill?",
+        "hinglish": "Order ready hai ✅ Bill neeche hai, dekh ke confirm kijiye.",
+        "hindi": "ऑर्डर तैयार है ✅ बिल नीचे है, देखकर कन्फ़र्म कीजिए।",
+        "marathi": "ऑर्डर तयार आहे ✅ बिल खाली आहे, पाहून कन्फर्म करा.",
+        "english": "Your order is ready ✅ The bill is below, please check and confirm.",
     },
     "too_many": {
         "hinglish": "Ek baar mein 30 se zyada items nahi le sakta. Thoda kam karke dobara bhejiye.",
@@ -181,11 +181,11 @@ FIXED = {
         "marathi": "ठीक आहे, तुम्ही निवांत सांगा.",
         "english": "Sure, take your time.",
     },
-    "confirm_stage3": {
-        "hinglish": "Samajh gaya. Bill banane aur order confirm karne ka step abhi aa raha hai, isliye abhi kuch confirm nahi hua. Aapka order ready hai: {summary}. Kuch badalna ho toh bataiye.",
-        "hindi": "समझ गया। बिल बनाने और ऑर्डर कन्फ़र्म करने का स्टेप अभी आ रहा है, इसलिए अभी कुछ कन्फ़र्म नहीं हुआ। आपका ऑर्डर तैयार है: {summary}। कुछ बदलना हो तो बताइए।",
-        "marathi": "समजले. बिल बनवणे आणि ऑर्डर कन्फर्म करणे ही सुविधा लवकरच येत आहे, त्यामुळे अजून काही कन्फर्म झालेले नाही. तुमची ऑर्डर तयार आहे: {summary}. काही बदलायचे असल्यास सांगा.",
-        "english": "Got it. Billing and confirming the order are coming next, so nothing is confirmed yet. Your order is ready: {summary}. Tell me if you want to change anything.",
+    "confirm_use_button": {
+        "hinglish": "Samajh gaya. Order confirm karne ke liye bill card ka \"Confirm order\" button dabaiye (phone verify aur delivery address zaroori hai). Aapka order: {summary}.",
+        "hindi": "समझ गया। ऑर्डर कन्फ़र्म करने के लिए बिल कार्ड का \"Confirm order\" बटन दबाइए (फ़ोन वेरिफ़ाई और डिलीवरी पता ज़रूरी है)। आपका ऑर्डर: {summary}।",
+        "marathi": "समजले. ऑर्डर कन्फर्म करण्यासाठी बिल कार्डवरील \"Confirm order\" बटण दाबा (फोन व्हेरिफाय आणि डिलिव्हरी पत्ता आवश्यक आहे). तुमची ऑर्डर: {summary}.",
+        "english": "Got it. Tap \"Confirm order\" on the bill card to place the order (phone verification and a delivery address are needed). Your order: {summary}.",
     },
     "confirm_pending": {
         "hinglish": "Pehle in items ka jawab de dijiye: {names}. Phir bill ban jayega.",
@@ -194,10 +194,10 @@ FIXED = {
         "english": "Please answer these first: {names}. Then I can make the bill.",
     },
     "declined": {
-        "hinglish": "Theek hai, bill abhi nahi banata. Aapka order yahin hai: {summary}. Aur kuch jodna ho toh bataiye.",
-        "hindi": "ठीक है, बिल अभी नहीं बनाता। आपका ऑर्डर यहीं है: {summary}। और कुछ जोड़ना हो तो बताइए।",
-        "marathi": "ठीक आहे, बिल आत्ता बनवत नाही. तुमची ऑर्डर इथेच आहे: {summary}. आणखी काही जोडायचे असल्यास सांगा.",
-        "english": "Okay, I won't make the bill yet. Your order stays here: {summary}. Tell me if you want to add anything.",
+        "hinglish": "Theek hai, order abhi confirm nahi karte. Aapka order yahin hai: {summary}. Aur kuch jodna ho toh bataiye.",
+        "hindi": "ठीक है, ऑर्डर अभी कन्फ़र्म नहीं करते। आपका ऑर्डर यहीं है: {summary}। और कुछ जोड़ना हो तो बताइए।",
+        "marathi": "ठीक आहे, ऑर्डर आत्ता कन्फर्म करत नाही. तुमची ऑर्डर इथेच आहे: {summary}. आणखी काही जोडायचे असल्यास सांगा.",
+        "english": "Okay, we won't confirm the order yet. Your order stays here: {summary}. Tell me if you want to add anything.",
     },
     "declined_empty": {
         "hinglish": "Theek hai. Jab chahiye tab bata dijiye.",
@@ -218,6 +218,40 @@ ADDED = {
     "hindi": "जोड़ दिया: {added}।",
     "marathi": "जोडले: {added}.",
     "english": "Added: {added}.",
+}
+
+
+STATUS_MESSAGES = {
+    "confirmed": {
+        "hinglish": "Order #{no} confirm ho gaya ✓ Dukaan aapka order jaldi pack karegi.",
+        "hindi": "ऑर्डर #{no} कन्फ़र्म हो गया ✓ दुकान जल्द ही आपका ऑर्डर पैक करेगी।",
+        "marathi": "ऑर्डर #{no} कन्फर्म झाली ✓ दुकान लवकरच तुमची ऑर्डर पॅक करेल.",
+        "english": "Order #{no} confirmed ✓ The shop will pack it soon.",
+    },
+    "packing": {
+        "hinglish": "Order #{no} pack ho raha hai 📦",
+        "hindi": "ऑर्डर #{no} पैक हो रहा है 📦",
+        "marathi": "ऑर्डर #{no} पॅक होत आहे 📦",
+        "english": "Order #{no} is being packed 📦",
+    },
+    "out_for_delivery": {
+        "hinglish": "Order #{no} delivery ke liye nikal gaya 🛵",
+        "hindi": "ऑर्डर #{no} डिलीवरी के लिए निकल गया 🛵",
+        "marathi": "ऑर्डर #{no} डिलिव्हरीसाठी निघाली 🛵",
+        "english": "Order #{no} is out for delivery 🛵",
+    },
+    "delivered": {
+        "hinglish": "Order #{no} deliver ho gaya ✅ Dhanyavaad!",
+        "hindi": "ऑर्डर #{no} डिलीवर हो गया ✅ धन्यवाद!",
+        "marathi": "ऑर्डर #{no} डिलिव्हर झाली ✅ धन्यवाद!",
+        "english": "Order #{no} delivered ✅ Thank you!",
+    },
+    "cancelled": {
+        "hinglish": "Order #{no} cancel ho gaya.",
+        "hindi": "ऑर्डर #{no} रद्द हो गया।",
+        "marathi": "ऑर्डर #{no} रद्द झाली.",
+        "english": "Order #{no} was cancelled.",
+    },
 }
 
 

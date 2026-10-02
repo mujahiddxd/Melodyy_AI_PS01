@@ -210,7 +210,16 @@ export interface ChatMessage {
   type: "text" | "audio" | "image" | "system" | "bill";
   content: string;
   media_url: string | null;
-  meta: { clarification_ids?: number[]; order_id?: number; [k: string]: unknown } | null;
+  meta: {
+    clarification_ids?: number[];
+    order_id?: number;
+    /** "bill" | "order_confirmed" | "order_status" (Stage 4 messages) */
+    kind?: string;
+    status?: OrderStatus;
+    order_no?: number;
+    bill?: Bill;
+    [k: string]: unknown;
+  } | null;
   created_at: string;
 }
 
@@ -287,9 +296,20 @@ export interface Order {
   discount: string;
   delivery_fee: string;
   total: string;
+  delivery_address_text: string | null;
+  delivery_lat: number | null;
+  delivery_lng: number | null;
+  distance_km: number | null;
   requested_delivery_text: string | null;
+  requested_delivery_at: string | null;
+  payment_method: PaymentMethod | null;
+  payment_status: "pending" | "paid" | "cod" | null;
+  quoted_at: string | null;
+  confirmed_at: string | null;
   created_at: string;
 }
+
+export type PaymentMethod = "cod" | "upi" | "razorpay";
 
 export interface CreateConversationResponse {
   conversation: ConversationInfo;
@@ -334,4 +354,96 @@ export interface ShopListResponse {
   page: number;
   page_size: number;
   has_more: boolean;
+}
+
+// ---- Bill, confirm, owner board (Stage 4)
+export interface BillLine {
+  item_id: number;
+  product_id: number;
+  name: string;
+  qty: string;
+  /** product unit for loose items ("kg", "l"), "pack" for packed ones */
+  unit: string;
+  /** what the customer gets: "2 kg" or "×4" */
+  qty_label: string;
+  unit_price: string;
+  line_total: string;
+}
+
+export interface Bill {
+  order_id: number;
+  order_no: number;
+  lines: BillLine[];
+  subtotal: string;
+  discount: string;
+  delivery_fee: string;
+  total: string;
+  payment_method: PaymentMethod | null;
+  requires_reapproval: boolean;
+  quoted_at: string | null;
+}
+
+export interface StatusEvent {
+  from_status: OrderStatus | null;
+  to_status: OrderStatus;
+  actor: "customer" | "shopkeeper" | "system";
+  note: string | null;
+  created_at: string;
+}
+
+export interface CustomerOrderResponse {
+  order: Order;
+  timeline: StatusEvent[];
+}
+
+export interface ConfirmResponse {
+  order: Order;
+  message: string;
+  newly_confirmed: boolean;
+}
+
+export interface OwnerOrderCard {
+  id: number;
+  order_no: number;
+  status: OrderStatus;
+  customer_phone_masked: string | null;
+  item_count: number;
+  total: string;
+  payment_method: PaymentMethod | null;
+  payment_status: "pending" | "paid" | "cod" | null;
+  requested_delivery_text: string | null;
+  requested_delivery_at: string | null;
+  has_problem: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OwnerOrderDetail {
+  order: Order;
+  customer: { phone_masked: string | null };
+  shop: { name: string; lat: number | null; lng: number | null };
+  messages: ChatMessage[];
+  bill: Bill | null;
+  problems: string[];
+  allowed_next: OrderStatus[];
+  timeline: StatusEvent[];
+  agent_runs: AgentRun[];
+}
+
+export interface DeliveryNote {
+  order_no: number;
+  shop_name: string;
+  customer_phone: string | null;
+  delivery_address_text: string | null;
+  delivery_lat: number | null;
+  delivery_lng: number | null;
+  requested_delivery_text: string | null;
+  requested_delivery_at: string | null;
+  items: { name: string; qty: string; unit: string; qty_label: string; unit_price: string; line_total: string }[];
+  subtotal: string;
+  delivery_fee: string;
+  total: string;
+  payment_method: PaymentMethod | null;
+  payment_status: "pending" | "paid" | "cod" | null;
+  created_at: string;
 }

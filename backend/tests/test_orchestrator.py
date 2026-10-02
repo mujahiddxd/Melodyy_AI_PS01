@@ -15,7 +15,8 @@ from app.db import SessionLocal
 from app.llm.fixtures import DEMO_MESSAGES as M
 from app.main import app
 from app.models import (
-    AgentRun, Clarification, Conversation, Customer, Message, Order, OrderItem, Product, Shop, Shopkeeper,
+    AgentRun, Clarification, Conversation, Customer, Message, Order, OrderItem, OrderStatusEvent, Product, Shop,
+    Shopkeeper,
 )
 from app.security import create_access_token
 from tests.catalog import load_products
@@ -46,12 +47,13 @@ def shop():
                            aliases=p.aliases, shelf=p.shelf, is_active=True))
         db.commit()
         ids = (s.id, owner.id)
-    yield {"slug": s.slug, "id": ids[0]}
+    yield {"slug": s.slug, "id": ids[0], "owner_id": ids[1]}
     with SessionLocal() as db:
         convs = select(Conversation.id).where(Conversation.shop_id == ids[0])
         orders = select(Order.id).where(Order.conversation_id.in_(convs))
         db.execute(delete(AgentRun).where(AgentRun.conversation_id.in_(convs)))
         db.execute(delete(Clarification).where(Clarification.order_id.in_(orders)))
+        db.execute(delete(OrderStatusEvent).where(OrderStatusEvent.order_id.in_(orders)))
         db.execute(delete(OrderItem).where(OrderItem.order_id.in_(orders)))
         db.execute(delete(Order).where(Order.conversation_id.in_(convs)))
         db.execute(delete(Message).where(Message.conversation_id.in_(convs)))
@@ -152,9 +154,11 @@ def test_demo1_tapping_chips_completes_the_order(chat):
     assert by_name(order)["butter"]["status"] == "matched"
     assert by_name(order)["butter"]["product_name"] == "Amul Butter 500g"
     assert order["status"] == "awaiting_confirmation"
-    assert "Order ready" in r.json()["messages"][-1]["content"]
+    assert "Order ready" in r.json()["messages"][-2]["content"]
+    bill = r.json()["messages"][-1]  # the billing agent runs when the order becomes ready
+    assert bill["type"] == "bill" and bill["meta"]["bill"]["total"] == order["total"]
     runs = [a["agent"] for a in r.json()["agent_runs"]]
-    assert runs == ["matcher", "inventory", "clarifier", "messaging"]
+    assert runs == ["matcher", "inventory", "clarifier", "messaging", "billing"]
 
     # answering twice is refused
     again = client.post(f"/conversations/{chat['id']}/clarifications/{butter['id']}/answer",
@@ -372,8 +376,9 @@ def test_prompt_injection_cannot_change_prices(chat, monkeypatch):
     r = send(chat, text)
     assert r.status_code == 200
     item = r.json()["order"]["items"][0]
-    assert item["product_name"] == "Atta (Loose)" and item["unit_price_snapshot"] is None
-    assert item["product"]["price"] == "45.00"
+    # the quote prices the line from the database, whatever the message said
+    assert item["product_name"] == "Atta (Loose)" and item["unit_price_snapshot"] == "45.00"
+    assert item["line_total"] == "90.00" and item["product"]["price"] == "45.00"
     with SessionLocal() as db:
         assert db.scalar(select(Product.price).where(Product.shop_id == chat["shop"]["id"], Product.name == "Atta (Loose)")) == Decimal("45.00")
 

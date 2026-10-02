@@ -21,6 +21,8 @@ type Check =
   | { kind: "error"; message: string; notConfigured: boolean };
 
 export interface ChosenAddress {
+  /** Set once the address is saved (or picked from the saved ones): orders are confirmed against a saved address. */
+  id?: number;
   lat: number;
   lng: number;
   address_text: string;
@@ -51,6 +53,7 @@ export function DeliveryAddress({
   const [textError, setTextError] = useState<string | null>(null);
   const [check, setCheck] = useState<Check>({ kind: "idle" });
   const [saving, setSaving] = useState(false);
+  const [savedId, setSavedId] = useState<number | null>(null);
   const [saved, setSaved] = useState<{ loading: boolean; error: string | null; items: Address[] }>({
     loading: false,
     error: null,
@@ -91,9 +94,16 @@ export function DeliveryAddress({
   useEffect(() => {
     if (!onChange) return;
     if (pin && check.kind === "done") {
-      onChange({ ...pin, address_text: text.trim(), label, eligible: check.result.eligible, distance_km: check.result.distance_km });
+      onChange({
+        ...pin,
+        id: savedId ?? undefined,
+        address_text: text.trim(),
+        label,
+        eligible: check.result.eligible,
+        distance_km: check.result.distance_km,
+      });
     } else onChange(null);
-  }, [pin, check, text, label, onChange]);
+  }, [pin, check, text, label, savedId, onChange]);
 
   const loadSaved = useCallback(async () => {
     if (!customer) return setSaved({ loading: false, error: null, items: [] });
@@ -114,6 +124,7 @@ export function DeliveryAddress({
     setPin({ lat: a.lat, lng: a.lng });
     setText(a.address_text);
     setLabel(a.label);
+    setSavedId(a.id);
     setTextError(null);
   }
 
@@ -133,6 +144,7 @@ export function DeliveryAddress({
         json: { label, address_text: text.trim(), lat: pin.lat, lng: pin.lng },
       });
       setSaved((s) => ({ ...s, items: [a, ...s.items] }));
+      setSavedId(a.id);
       toast.show("Address saved.", "success");
     } catch (e) {
       toast.show(e instanceof ApiError ? e.message : "Could not save the address.", "error");
@@ -196,6 +208,7 @@ export function DeliveryAddress({
         pinHint={`Click the map where you want delivery. The shaded circle is the area ${shop.name} delivers to.`}
         onPick={(lat, lng, placeLabel) => {
           setPin({ lat, lng });
+          setSavedId(null); // a new pin is a new, unsaved address
           if (placeLabel && !text.trim()) setText(placeLabel);
         }}
       />
@@ -223,6 +236,7 @@ export function DeliveryAddress({
               className="btn-secondary shrink-0 !py-2"
               onClick={() => {
                 setPin(null);
+                setSavedId(null);
                 setText("");
               }}
             >
@@ -255,7 +269,10 @@ export function DeliveryAddress({
               placeholder="Flat 12, Shanti Apts, near Karve Nagar bus stop"
               value={text}
               maxLength={500}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value);
+                setSavedId(null);
+              }}
             />
           </Field>
           <button type="button" className="btn-primary self-start" onClick={save} disabled={saving}>

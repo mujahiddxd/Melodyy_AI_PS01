@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.agents import answer as answer_agent
 from app.agents import availability as availability_agent
 from app.agents.base import RunCtx
+from app.agents.billing import run_billing
 from app.agents.clarifier import run_clarifier
 from app.agents.intake import IntakeResult, run_intake
 from app.agents.inventory import run_inventory
@@ -56,6 +57,7 @@ class _Turn:
     order: Order | None
     customer_text: str
     bot: Message | None = None
+    extra: list[Message] = field(default_factory=list)  # messages posted after the bot reply (the bill card)
     products: dict[int, Product] = field(default_factory=dict)
 
 
@@ -123,6 +125,8 @@ def _finish_order_message(
         t.ctx.skipped("clarifier", "nothing left to ask")
         # name what this message added, so "order ready" never reads like a repeat of the previous reply
         _say(t, lang_svc.ready_after_adding(_lang(t.conv), added or []), meta)
+        if order.status == "awaiting_confirmation":  # the billing agent runs whenever the order becomes ready
+            t.extra.append(run_billing(t.ctx, order, t.shop))
 
 
 def _process_items(t: _Turn, parsed, intake: IntakeResult) -> None:
@@ -178,8 +182,8 @@ def _answer_availability(t: _Turn, parsed, text: str, lang: str) -> bool:
 
 
 def _confirm_reply(t: _Turn, lang: str) -> None:
-    """"Haan, bill bana do": Stage 4 will make the bill and confirm. Until then nothing is confirmed, and the customer is
-    told so, with the draft read back. Pending questions come first."""
+    """"Haan, confirm": confirming needs a verified phone and an address, so it is done with the bill card's button, never
+    from free text. The customer is pointed to it, with the draft read back. Pending questions come first."""
     db, order = t.ctx.db, t.order
     open_all = orders_svc.open_clarifications(db, order.id) if order else []
     if open_all:
@@ -191,7 +195,7 @@ def _confirm_reply(t: _Turn, lang: str) -> None:
     if not summary:
         _say(t, lang_svc.fixed("empty_order", lang), {"reason": "confirm_empty"})
         return
-    _say(t, lang_svc.fixed("confirm_stage3", lang).format(summary=summary), {"reason": "confirm_not_available_yet"})
+    _say(t, lang_svc.fixed("confirm_use_button", lang).format(summary=summary), {"reason": "confirm_use_button"})
 
 
 def _decline_reply(t: _Turn, lang: str) -> None:
@@ -253,6 +257,7 @@ def _finalize(t: _Turn, new_msgs: list[Message]) -> ChatResult:
     db.commit()
     if t.bot is not None:
         new_msgs.append(t.bot)
+    new_msgs.extend(t.extra)
     return ChatResult(new_msgs, order, _load_runs(db, t.ctx.run_ids))
 
 
@@ -260,6 +265,7 @@ def _failure(t: _Turn, new_msgs: list[Message]) -> ChatResult:
     """An LLM step failed or returned invalid output: nothing is written to the order."""
     db = t.ctx.db
     db.rollback()
+    t.extra.clear()
     t.order = orders_svc.active_order(db, t.conv.id)  # as it was before this message
     t.ctx.order_id = t.order.id if t.order else None
     _say(t, lang_svc.fixed("failure", lang_svc.reply_lang(t.conv.language, t.conv.script)), {"error": "LLM_FAILED"})

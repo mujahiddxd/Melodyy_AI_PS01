@@ -51,3 +51,37 @@ export function clock(iso: string): string {
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
+
+/** "just now", "5 min", "2 h", "3 d": how long ago, for board cards. */
+export function age(iso: string, now: number = Date.now()): string {
+  const secs = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
+  if (secs < 60) return "just now";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins} min`;
+  const hours = Math.floor(mins / 60);
+  return hours < 24 ? `${hours} h` : `${Math.floor(hours / 24)} d`;
+}
+
+/** Order number as shown everywhere: "#1042". */
+export function orderNo(n: number): string {
+  return `#${n}`;
+}
+
+/** "5 Oct, 09:41 am" in the viewer's timezone. */
+export function dateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.toLocaleDateString([], { day: "numeric", month: "short" })}, ${clock(iso)}`;
+}
+
+/** Always two decimals: "₹113.00" (bills and totals). */
+export function rupees2(v: string | number): string {
+  const n = typeof v === "number" ? v : parseFloat(v);
+  return `₹${(Number.isNaN(n) ? 0 : n).toFixed(2)}`;
+}
+
+export const PAYMENT_LABEL: Record<string, string> = {
+  cod: "Cash on Delivery",
+  upi: "UPI",
+  razorpay: "Online payment",
+};

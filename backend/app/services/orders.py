@@ -13,6 +13,7 @@ from app.models.conversation import OPEN_ORDER_STATUSES
 from app.schemas.conversation import (
     AgentRunOut, ClarificationOut, MessageOut, OrderItemOut, OrderOut, ProductSummary,
 )
+from app.services import order_state_machine as osm
 from app.services.language import item_question
 from app.services.matcher import norm
 from app.services.unit_normalizer import canonical_qty
@@ -154,11 +155,13 @@ def refresh_status(db: Session, order: Order) -> None:
         return
     live = [i for i in order_items(db, order.id) if i.status != "removed"]
     if open_clarifications(db, order.id):
-        order.status = "needs_clarification"
+        target = "needs_clarification"
     elif live:
-        order.status = "awaiting_confirmation"
+        target = "awaiting_confirmation"
     else:
-        order.status = "draft"
+        target = "draft"
+    if target != order.status:
+        osm.transition(db, order, target, "system")  # writes the order_status_events row
 
 
 def order_summary_text(db: Session, order: Order | None) -> str:

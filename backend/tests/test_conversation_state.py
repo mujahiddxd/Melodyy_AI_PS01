@@ -39,7 +39,12 @@ def word_of(order, clar):
 
 
 def bot(body):
-    return body["messages"][-1]["content"]
+    """The bot's text reply (the bill card, type "bill", is posted after it and is not a reply)."""
+    return [m for m in body["messages"] if m["type"] != "bill"][-1]["content"]
+
+
+def text_msgs(body):
+    return [m for m in body["messages"] if m["type"] != "bill"]
 
 
 def answer(chat, clar, **body):
@@ -88,13 +93,13 @@ def test_ruko_with_an_item_in_the_same_message_is_still_an_order(chat, monkeypat
 
 def test_pending_chips_survive_an_off_topic_message(chat, monkeypatch):
     b1 = say(chat, monkeypatch, "tel chahiye", [item("tel", "tel")])
-    ids = b1["messages"][-1]["meta"]["clarification_ids"]
+    ids = text_msgs(b1)[-1]["meta"]["clarification_ids"]
     assert ids
     for text in ("ruko", "kya haal hai"):
         if text != "ruko":
             monkeypatch.setitem(fixtures.FIXTURES["parser"], text, {"language": "hinglish", "script": "latin", "intent": "other", "items": []})
         b = say(chat, monkeypatch, text)
-        assert b["messages"][-1]["meta"]["clarification_ids"] == ids
+        assert text_msgs(b)[-1]["meta"]["clarification_ids"] == ids
         assert len(open_clars(b["order"])) == 1
 
 
@@ -110,7 +115,7 @@ def test_new_message_does_not_repeat_old_questions(chat, monkeypatch):
     assert items["coriander"]["status"] == "unmatched" and Decimal(items["coriander"]["quantity_value"]) == Decimal("0.25")
     # the sugar question is still pending (chips + draft), just not narrated again
     assert items["cheeni"]["status"] == "vague_qty"
-    assert len(b2["messages"][-1]["meta"]["clarification_ids"]) == 2
+    assert len(text_msgs(b2)[-1]["meta"]["clarification_ids"]) == 2
 
     b3 = say(chat, monkeypatch, "दीड किलो तांदूळ", [item("दीड किलो तांदूळ", "तांदूळ", "दीड", "किलो")], language="marathi", script="devanagari")
     text = bot(b3).lower()

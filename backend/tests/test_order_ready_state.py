@@ -1,12 +1,12 @@
-"""Regression: after "Order ready hai ✅ Bill banaun?" every new message is processed on its own (exactly once) and the
+"""Regression: after "Order ready hai ✅ Bill neeche hai..." every new message is processed on its own (exactly once) and the
 reply says what happened.
 
-    Bot: "Order ready hai ✅ Bill banaun?"  Customer: "ek kilo buscuit hai"  Bot: "Order ready hai ✅ Bill banaun?"
+    Bot: "Order ready hai ✅ Bill neeche hai..."  Customer: "ek kilo buscuit hai"  Bot: "Order ready hai ✅ Bill neeche hai..."
 
 Traced cause: the message WAS processed, but (1) whether "hai" meant "do you have" or "I want" was left to the LLM, which
 varies run to run, and when it read an order the biscuit was added silently, and (2) the fixed "order ready" sentence did
 not name what changed, so a changed draft looked like a repeated reply. Billing/confirming is Stage 4, so a confirmation
-is acknowledged and read back but nothing is confirmed.
+points to the bill card's Confirm button (nothing is confirmed from free text).
 """
 from decimal import Decimal
 
@@ -16,16 +16,16 @@ from sqlalchemy import func, select
 from app.db import SessionLocal
 from app.llm import fixtures
 from app.models import AgentRun, Message
-from tests.test_conversation_state import answer, bot, item, live, open_clars, say  # noqa: F401
+from tests.test_conversation_state import text_msgs, answer, bot, item, live, open_clars, say  # noqa: F401
 from tests.test_orchestrator import chat, client, mock_llm, send, shop, stock_of  # noqa: F401
 
-READY = "Order ready hai ✅ Bill banaun?"
+READY = "Order ready hai ✅ Bill neeche hai, dekh ke confirm kijiye."
 BISCUIT = item("ek kilo buscuit", "buscuit", "ek", "kilo")
 
 
 @pytest.fixture
 def ready(chat, monkeypatch):
-    """A conversation whose draft is ready: 2 kg atta, bot said "Order ready hai ✅ Bill banaun?"."""
+    """A conversation whose draft is ready: 2 kg atta, bot said "Order ready hai ✅ Bill neeche hai..."."""
     b = say(chat, monkeypatch, "2 kilo atta", [item("2 kilo atta", "atta", "2", "kilo")])
     assert bot(b) == f"Jod diya: Atta (Loose) 2 kg. {READY}"
     assert b["order"]["status"] == "awaiting_confirmation"
@@ -38,7 +38,7 @@ def snapshot(order):
 
 def bot_messages(chat):
     state = client.get(f"/conversations/{chat['id']}", headers=chat["headers"]).json()
-    return [m["content"] for m in state["messages"] if m["sender"] == "bot"], state
+    return [m["content"] for m in state["messages"] if m["sender"] == "bot" and m["type"] != "bill"], state
 
 
 # ---- interpretation 1: "ek kilo buscuit hai" is a QUESTION -----------------------------------------------
@@ -117,7 +117,7 @@ def test_existing_lines_are_untouched_when_an_item_is_added(ready):
 def test_explicit_confirmation_is_recognised_and_does_not_change_the_draft(ready):
     b = say(ready["chat"], ready["mp"], "Haan, bill bana do")
     out = bot(b)
-    assert out != ready["last"] and "kuch confirm nahi hua" in out and "Atta (Loose) 2 kg" in out
+    assert out != ready["last"] and "Confirm order" in out and "Atta (Loose) 2 kg" in out
     assert b["order"]["status"] == "awaiting_confirmation"  # Stage 4 will confirm; nothing is confirmed here
     assert snapshot(b["order"]) == snapshot(ready["order"])
     assert [a["agent"] for a in b["agent_runs"]] == ["intake", "messaging"]  # no LLM needed for a clear "haan"
@@ -125,7 +125,7 @@ def test_explicit_confirmation_is_recognised_and_does_not_change_the_draft(ready
 
 def test_confirmation_the_parser_recognises_is_handled_the_same_way(ready):
     b = say(ready["chat"], ready["mp"], "sab theek hai, bill ban jayega na", [], intent="confirm")
-    assert "kuch confirm nahi hua" in bot(b) and b["order"]["status"] == "awaiting_confirmation"
+    assert "Confirm order" in bot(b) and b["order"]["status"] == "awaiting_confirmation"
     assert "Ye option abhi aa raha hai" not in bot(b)
 
 
@@ -134,7 +134,7 @@ def test_confirmation_with_a_pending_question_asks_for_the_answer_first(chat, mo
     b = say(chat, monkeypatch, "haan bill bana do", [], intent="confirm")
     assert "Pehle in items ka jawab" in bot(b) and "cheeni" in bot(b)
     assert b["order"]["status"] == "needs_clarification"
-    assert b["messages"][-1]["meta"]["clarification_ids"] == b1["messages"][-1]["meta"]["clarification_ids"]
+    assert text_msgs(b)[-1]["meta"]["clarification_ids"] == text_msgs(b1)[-1]["meta"]["clarification_ids"]
 
 
 def test_no_order_means_nothing_to_confirm(chat, monkeypatch):
@@ -146,7 +146,7 @@ def test_no_order_means_nothing_to_confirm(chat, monkeypatch):
 @pytest.mark.parametrize("text", ["Nahi", "nahi bhai", "abhi nahi", "rehne do"])
 def test_rejecting_the_bill_keeps_the_draft(ready, text):
     b = say(ready["chat"], ready["mp"], text)
-    assert "bill abhi nahi banata" in bot(b) and "Atta (Loose) 2 kg" in bot(b) and bot(b) != ready["last"]
+    assert "order abhi confirm nahi karte" in bot(b) and "Atta (Loose) 2 kg" in bot(b) and bot(b) != ready["last"]
     assert snapshot(b["order"]) == snapshot(ready["order"]) and b["order"]["status"] == "awaiting_confirmation"
 
 

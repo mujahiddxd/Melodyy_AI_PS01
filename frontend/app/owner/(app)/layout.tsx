@@ -39,7 +39,7 @@ export default function OwnerAppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-6 sm:px-6">
-      <nav className="flex flex-wrap items-center gap-2 rounded-full bg-white px-4 py-2 shadow-clay">
+      <nav className="flex flex-wrap items-center gap-2 rounded-full bg-white px-4 py-2 shadow-clay print:hidden">
         <Link href="/owner/orders" className="mr-2 font-display text-lg">
           Order Desk
         </Link>

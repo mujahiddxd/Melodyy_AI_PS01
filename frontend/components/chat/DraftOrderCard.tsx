@@ -22,7 +22,7 @@ const STATUS: Record<OrderItemStatus, { label: string; cls: string }> = {
 const ORDER_STATUS: Record<OrderStatus, { label: string; cls: string }> = {
   draft: { label: "Draft", cls: "bg-white" },
   needs_clarification: { label: "Needs your answer", cls: "bg-butter" },
-  awaiting_confirmation: { label: "Ready for bill", cls: "bg-mint" },
+  awaiting_confirmation: { label: "Ready to confirm", cls: "bg-mint" },
   confirmed: { label: "Confirmed", cls: "bg-mint" },
   packing: { label: "Packing", cls: "bg-sky" },
   out_for_delivery: { label: "Out for delivery", cls: "bg-sky" },
@@ -86,7 +86,7 @@ export function DraftOrderCard({ order, loading }: { order: Order | null; loadin
     <section className="card !p-4" aria-label="Draft order">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="eyebrow">Draft order</p>
+          <p className="eyebrow">{!order || ["draft", "needs_clarification", "awaiting_confirmation"].includes(order.status) ? "Draft order" : "Your order"}</p>
           <h2 className="text-xl">{order ? `#${order.order_no}` : "Nothing yet"}</h2>
         </div>
         {status && <span className={`badge border-2 border-ink ${status.cls}`}>{status.label}</span>}
@@ -112,8 +112,11 @@ export function DraftOrderCard({ order, loading }: { order: Order | null; loadin
 
       {order && items.length > 0 && (
         <p className="mt-4 text-xs text-muted">
-          Prices shown are from the shop&apos;s catalog. The final bill is made in the next step, and stock is only
-          reserved when you confirm.
+          {order.status === "awaiting_confirmation"
+            ? "The bill is in the chat. Stock is only reserved when you confirm."
+            : ["draft", "needs_clarification"].includes(order.status)
+              ? "Prices shown are from the shop's catalog. The bill is made once every question is answered. Stock is only reserved when you confirm."
+              : "Prices were fixed on the bill you confirmed."}
         </p>
       )}
     </section>

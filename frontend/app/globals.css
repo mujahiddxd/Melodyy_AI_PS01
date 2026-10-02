@@ -26,3 +26,9 @@ h1, h2, h3, .font-display {
   .input { @apply w-full bg-white rounded-input px-4 py-3 shadow-clay outline-none placeholder:text-muted focus:ring-[3px] focus:ring-ink; }
   .eyebrow { @apply text-xs uppercase tracking-widest text-muted font-semibold; }
 }
+
+/* Delivery note: print only the note, on white paper */
+@media print {
+  body { background: #fff !important; background-image: none !important; }
+  .no-print { display: none !important; }
+}

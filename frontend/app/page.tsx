@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { BackendStatus } from "@/components/BackendStatus";
 import { ShopDiscovery } from "@/components/shops/ShopDiscovery";
 import { MockBadge } from "@/components/ui/MockBadge";
 
@@ -38,9 +37,6 @@ export default function Home() {
             <Link href="/owner/login" className="btn-secondary">
               Shopkeeper login
             </Link>
-          </div>
-          <div className="mt-8">
-            <BackendStatus />
           </div>
         </div>
 

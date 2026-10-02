@@ -12,7 +12,7 @@ from sqlalchemy import select, update
 from app.db import SessionLocal
 from app.llm import fixtures
 from app.models import Order, OrderItem, Product
-from tests.test_conversation_state import answer, bot, item, live, open_clars, say  # noqa: F401
+from tests.test_conversation_state import text_msgs, answer, bot, item, live, open_clars, say  # noqa: F401
 from tests.test_orchestrator import M, chat, client, mock_llm, send, shop, stock_of  # noqa: F401
 
 UNSUPPORTED = "Ye option abhi aa raha hai"
@@ -57,13 +57,13 @@ def test_existing_order_is_untouched_by_a_question(chat, monkeypatch):
     b1 = say(chat, monkeypatch, "thoda cheeni", [item("thoda cheeni", "cheeni", "thoda", vague=True)])
     b1 = say(chat, monkeypatch, "2 kilo atta", [item("2 kilo atta", "atta", "2", "kilo")])
     before = [(i["id"], i["status"], i["quantity_value"]) for i in b1["order"]["items"]]
-    ids = b1["messages"][-1]["meta"]["clarification_ids"]
+    ids = text_msgs(b1)[-1]["meta"]["clarification_ids"]
 
     b2 = ask(chat, monkeypatch, "Shakkar hai?")
     assert "Sugar (Loose)" in bot(b2)
     assert [(i["id"], i["status"], i["quantity_value"]) for i in b2["order"]["items"]] == before
     assert b2["order"]["status"] == b1["order"]["status"] == "needs_clarification"
-    assert b2["messages"][-1]["meta"]["clarification_ids"] == ids  # the pending chips stay visible
+    assert text_msgs(b2)[-1]["meta"]["clarification_ids"] == ids  # the pending chips stay visible
     assert len(open_clars(b2["order"])) == len(ids)
 
 

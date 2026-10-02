@@ -97,7 +97,7 @@ Unexpected server failure (status 500): `{ "detail": "Something went wrong. Plea
 draft -> needs_clarification -> awaiting_confirmation -> confirmed -> packing -> out_for_delivery -> delivered
 any pre-delivery state -> cancelled
 ```
-Customer actions: only `draft`, `needs_clarification`, `awaiting_confirmation` (plus amendments while `confirmed`/`packing`). Shopkeeper: `confirmed -> packing -> out_for_delivery -> delivered`, and cancel. Anything else returns `409 INVALID_TRANSITION`.
+Customer actions: only `draft`, `needs_clarification`, `awaiting_confirmation` (plus amendments while `confirmed`/`packing`). Shopkeeper: `confirmed -> packing -> out_for_delivery -> delivered`, and cancel. Anything else returns `409 INVALID_TRANSITION`. Details and who-may-do-what: section 6.
 
 ### 1.7 Shared object shapes
 
@@ -317,7 +317,7 @@ Auth: session. Response `200`:
 ```json
 { "conversation": { "...": "..." }, "messages": [ "<Message>" ], "order": "<Order> | null", "agent_runs": [ "<AgentRun> (of the latest message only)" ], "llm_mock": false }
 ```
-`order` is the open order of the conversation (`draft | needs_clarification | awaiting_confirmation`), else the latest order, else `null`.
+`order` is the open order of the conversation (`draft | needs_clarification | awaiting_confirmation`), else the latest order (e.g. the confirmed one, whose status changes arrive as `system` messages), else `null`.
 
 ### POST /conversations/{id}/claim
 Auth: customer Bearer **and** `X-Guest-Session` of that conversation. Attaches the guest conversation (and its orders) to the customer after OTP. Idempotent for the same customer. Response `200`: `{ "conversation_id": 7, "customer_id": 5 }`. `403 FORBIDDEN` when the guest session does not match or the conversation already belongs to another customer.
@@ -337,16 +337,16 @@ Response `200`:
 }
 ```
 - `messages` = the customer's message followed by the bot's reply. `meta.clarification_ids` lists the open clarifications the bot is asking about (the UI shows their `options` as chips).
-- The order moves to `needs_clarification` if any clarification is open, otherwise `awaiting_confirmation` (bot: "Order ready ✅ Bill banaun?"; the bill itself is Stage 4). Items parsed from later messages are added to the same open order.
+- The order moves to `needs_clarification` if any clarification is open, otherwise `awaiting_confirmation`: the bot says "Order ready hai ✅ Bill neeche hai, dekh ke confirm kijiye." and a `bill` message (section 6) follows it in `messages`. Items parsed from later messages are added to the same open order.
 - The bot replies in the customer's language **and script** (Hinglish, Hindi in Devanagari, Marathi in Devanagari, English).
 - Gibberish or non-grocery text: `order` is `null` (or unchanged if an order already exists), no order rows are created, the bot asks the customer to repeat / redirects.
 - Availability questions ("Shakkar hai?", "kya aapke paas atta hai", intent `availability_query`) are answered from the shop catalog and the stock in the database: matching products with every pack size, price, "sirf N bacha" for low stock, "stock mein nahi" plus in-stock alternatives, or "not found". The answer is built from database rows (no LLM wording), is read only, and **never adds anything to the order** or changes it (the pending chips stay visible). `agent_runs`: `intake, parser, inventory, messaging`. A `status_query` that names a product is treated the same way.
 - Question or request? Clear words decide, whatever the LLM labelled it: an ordering verb ("de do", "chahiye", "bhej") means a request; a question word ("hai", "milega", "available", "?") without one means an availability question. So "ek kilo buscuit hai" never adds an item, while "ek kilo buscuit de do" does. A question that names a quantity also says how it could be served ("1 kg ke liye Parle-G 250g ×4 mil jayega") or that stock is short.
-- When items are added and nothing is left open, the reply names them: "Jod diya: Parle-G 250g ×4. Order ready hai ✅ Bill banaun?", so it never repeats the previous reply.
-- A short "haan, bill bana do" with nothing pending reads the draft back and says nothing is confirmed yet (billing and confirming are Stage 4); with a pending question it asks for that answer first. A short "nahi" / "rehne do" keeps the draft ("bill abhi nahi banata"); with an open question, "nahi" skips that item only. "ruko" keeps the draft untouched.
-- Unsupported intents (cancel the order, remove, change quantity, repeat last order, a question about the order's own status) get a polite "coming soon" reply with no order change (Stages 4-5).
+- When items are added and nothing is left open, the reply names them: "Jod diya: Parle-G 250g ×4. Order ready hai ✅ Bill neeche hai, dekh ke confirm kijiye.", so it never repeats the previous reply, and a fresh `bill` message with the new total follows.
+- A short "haan, confirm" with nothing pending never confirms by itself (confirming needs a verified phone and an address): the bot points to the bill card's **Confirm order** button and reads the draft back; with a pending question it asks for that answer first. A short "nahi" / "rehne do" keeps the draft ("order abhi confirm nahi karte"); with an open question, "nahi" skips that item only. "ruko" keeps the draft untouched.
+- Unsupported intents (cancel the order by text, remove, change quantity, repeat last order, a question about the order's own status) get a polite "coming soon" reply with no order change (Stage 5; cancelling works with `POST /orders/{id}/cancel`).
 - A reply that answers an open question ("sunflower wala") is routed to that clarification automatically.
-- `agent_runs` order: `intake, parser, matcher, inventory, clarifier, messaging` (`clarifier` has `status: "skipped"` when nothing is open; gibberish stops after `intake`, then `messaging`).
+- `agent_runs` order: `intake, parser, matcher, inventory, clarifier, messaging` (`clarifier` has `status: "skipped"` when nothing is open; gibberish stops after `intake`, then `messaging`). When the message leaves the order ready, a `billing` run is appended after `messaging` and the response's `messages` end with the `bill` message.
 
 Errors:
 - `422 MESSAGE_TOO_LONG` (over 1,000 characters), `422 VALIDATION_ERROR` (empty message).
@@ -364,66 +364,110 @@ Auth: session. Request (exactly one of):
 ```json
 { "text": "sunflower wala 1 litre" }
 ```
-`option_product_id` must be one of the clarification's `options` (otherwise `422 VALIDATION_ERROR`). Free text is matched deterministically against the offered products (a quantity-only text like `"2 kilo"` answers a `vague_qty` question; `"skip"` / `"nahi chahiye"` removes the item, status `removed`). Re-runs Matcher + Inventory + Clarifier for that **one item**. The customer's tap or text is stored as a customer message (`meta.clarification_id`, `meta.option_product_id`). Response `200`: same shape as `POST /conversations/{id}/messages`, `agent_runs` = `matcher, inventory, clarifier, messaging`. If the answer is not understood, nothing changes and the bot asks again. When nothing is left open the order moves to `awaiting_confirmation`.
+`option_product_id` must be one of the clarification's `options` (otherwise `422 VALIDATION_ERROR`). Free text is matched deterministically against the offered products (a quantity-only text like `"2 kilo"` answers a `vague_qty` question; `"skip"` / `"nahi chahiye"` removes the item, status `removed`). Re-runs Matcher + Inventory + Clarifier for that **one item**. The customer's tap or text is stored as a customer message (`meta.clarification_id`, `meta.option_product_id`). Response `200`: same shape as `POST /conversations/{id}/messages`, `agent_runs` = `matcher, inventory, clarifier, messaging` (plus `billing` and a trailing `bill` message when this answer completes the order). If the answer is not understood, nothing changes and the bot asks again. When nothing is left open the order moves to `awaiting_confirmation`.
 Errors: `404 NOT_FOUND` (not a clarification of this conversation), `409 CONFLICT` (already answered), `409 INVALID_TRANSITION` (order no longer open), `422 VALIDATION_ERROR`, `422 MESSAGE_TOO_LONG`, `502 LLM_FAILED` (as above).
 
 ---
 
-## 6. Stage 4 — Bill, confirm, owner board (PLANNED)
+## 6. Stage 4 — Bill, confirm, owner board (LIVE)
+
+Inventory is deducted **only** by `POST /orders/{id}/confirm`, in one transaction, after `SELECT ... FOR UPDATE` on the order and on every product line. Prices, totals and stock always come from the database. Money is a 2-decimal string, quantities a 3-decimal string. Order numbers are `1000 + id` (no extra column).
+
+**Order state machine** (`services/order_state_machine.py`, the only code that changes `orders.status`): every transition writes an `order_status_events` row (`from_status`, `to_status`, `actor`, `note`, `created_at`). Moves from `confirmed` onward, and every cancel, also post a `system` message in the customer's chat (`meta: { kind: "order_confirmed" | "order_status", order_id, order_no, status }`, text in the conversation language). The internal moves while the customer is still chatting (`draft` / `needs_clarification` / `awaiting_confirmation`, actor `system`) are recorded as events but not announced: the bot's own messages already narrate them. Who may move what: the customer confirms (`awaiting_confirmation -> confirmed`) or cancels before confirmation; the shopkeeper moves `confirmed -> packing -> out_for_delivery -> delivered` and may cancel until `delivered`. Anything else is `409 INVALID_TRANSITION` (`detail` also carries `from_status`, `to_status`).
+
+**Order (additions)**: `GET`/`POST` responses use the `Order` object of section 1.7. Stage 4 fills `delivery_address_text`, `delivery_lat`, `delivery_lng`, `distance_km` (snapshotted from the saved address at confirm), `payment_method`, `payment_status` (`cod`), `quoted_at`, `confirmed_at`; order items get `unit_price_snapshot` and `line_total`.
+
+**Bill** (billing agent output; also the `meta.bill` of a `bill` message):
+```json
+{ "order_id": 42, "order_no": 1042,
+  "lines": [ { "item_id": 71, "product_id": 3, "name": "Atta (Loose)", "qty": "2.000", "unit": "kg", "qty_label": "2 kg", "unit_price": "45.00", "line_total": "90.00" },
+             { "item_id": 72, "product_id": 32, "name": "Parle-G 250g", "qty": "4.000", "unit": "pack", "qty_label": "×4", "unit_price": "25.00", "line_total": "100.00" } ],
+  "subtotal": "190.00", "discount": "0.00", "delivery_fee": "20.00", "total": "210.00",
+  "payment_method": null, "requires_reapproval": false, "quoted_at": "2026-10-02T09:31:00+00:00" }
+```
+`unit` is the product unit for loose items (`kg`, `l`, ...) and `"pack"` for packed items; `qty_label` is the text to show (`"2 kg"`, `"×4"`). `delivery_fee` is the shop's fee (0 for an empty order). `total = subtotal - discount + delivery_fee`. Line totals are `Decimal(price) x Decimal(qty)` rounded half-up to 2 places.
+
+**`bill` message** (`type: "bill"`, `sender: "bot"`): `{ "kind": "bill", "order_id": 42, "bill": <Bill> }`; `content` is a plain-text fallback ("Bill for order #1042: total ₹210.00"). A new `bill` message is posted every time the order (re)reaches `awaiting_confirmation` (it is part of the `POST /conversations/{id}/messages` and `.../answer` responses, after the bot's "Order ready" reply, with an extra `billing` entry in `agent_runs`) and on every re-quote. Only the **latest** bill of an order is live; the UI shows earlier ones as read-only. Typical sequence in `messages`: `customer`, `bot` (text), `bill`.
 
 ### POST /orders/{id}/quote
-Auth: session. Recomputes totals from **current DB prices**, snapshots `unit_price_snapshot`, sets `quoted_at`, posts a `bill` message. Response `200`:
+Auth: session (guest token or the customer's Bearer; not the owner). Re-runs the billing agent: current DB prices, new `unit_price_snapshot` / `line_total` / `subtotal` / `delivery_fee` / `total` / `quoted_at`, new `bill` message, `agent_runs` row `billing`. Stock is never touched. Response `200`:
 ```json
-{ "order": "<Order>", "bill": { "lines": [ { "item_id": 71, "name": "Atta (Loose)", "qty": "2.000", "unit": "kg", "unit_price": "45.00", "line_total": "90.00" } ], "subtotal": "272.00", "discount": "0.00", "delivery_fee": "0.00", "total": "272.00" } }
+{ "order": "<Order>", "bill": "<Bill>", "message": "<Message type=bill>" }
 ```
-Errors: `409 OPEN_CLARIFICATIONS`.
+Errors: `401`, `403`, `404`, `409 OPEN_CLARIFICATIONS` (order still has open questions), `409 INVALID_TRANSITION` (order is not `awaiting_confirmation`).
 
 ### POST /orders/{id}/confirm
-Auth: customer Bearer (order must belong to that customer's conversation). Request:
+Auth: **customer Bearer** (a guest token is not enough: `401`). The order's conversation must belong to that customer (a guest conversation must be claimed first: `POST /conversations/{id}/claim`, otherwise `403 FORBIDDEN`). Request:
 ```json
 { "address_id": 3, "payment_method": "cod" }
 ```
-Steps: state check -> `check_delivery()` again -> one transaction with `SELECT ... FOR UPDATE` on products, stock and price re-check -> deduct stock -> `confirmed`. Idempotent: confirming an already-confirmed order returns it unchanged (no second deduction). Response `200`:
+`payment_method` is `"cod"` only in this stage (anything else: `422`). `address_id` must be one of the customer's saved addresses (`404 NOT_FOUND` otherwise). Steps, in order: (0) order row locked; an order that is already `confirmed`/`packing`/`out_for_delivery`/`delivered` is returned as is; (1) no open clarifications and the state machine allows `awaiting_confirmation -> confirmed`; (2) `check_delivery()` on the address again; (3) one transaction: products `FOR UPDATE` (in id order), stock `>= product_qty` and live price `==` `unit_price_snapshot` for every line, deduct stock, set `confirmed`, `confirmed_at`, `payment_method = cod`, `payment_status = cod`, address snapshot, `requires_reapproval = false`, write the status event and the confirmation message, commit. Response `200`:
 ```json
-{ "order": "<Order, status=confirmed, payment_status=cod>", "message": "Order #1042 confirmed" }
+{ "order": "<Order, status=confirmed, payment_status=cod>", "message": "Order #1042 confirmed", "newly_confirmed": true }
 ```
-Errors:
-- `401` no/invalid customer token; `403`/`404` not this customer's order
-- `409 OPEN_CLARIFICATIONS`
-- `422 OUT_OF_RADIUS` with `distance_km`, `radius_km`
-- `409 STOCK_CHANGED`: `{ "detail": { "code": "STOCK_CHANGED", "message": "Stock changed for Amul Butter 100g, please review.", "items": [ { "item_id": 72, "product_name": "Amul Butter 100g", "available_qty": "0.000" } ] } }`
-- `409 PRICE_CHANGED`: `{ "detail": { "code": "PRICE_CHANGED", "message": "Price changed for Fortune Sunflower Oil 1L.", "changes": [ { "item_id": 73, "product_name": "Fortune Sunflower Oil 1L", "old_price": "155.00", "new_price": "160.00" } ], "old_total": "412.00", "new_total": "417.00" } }`
+**Idempotent:** a second (or simultaneous) confirm of the same order returns `200` with the order and `"newly_confirmed": false`, deducts nothing and posts no second message.
+
+Errors (all roll the transaction back; nothing is deducted):
+- `401` no customer token; `403` not this customer's order; `404` unknown order / address.
+- `409 OPEN_CLARIFICATIONS`; `409 INVALID_TRANSITION` (e.g. `cancelled`, or `draft` with nothing billed); `422 VALIDATION_ERROR` (nothing billable).
+- `422 OUT_OF_RADIUS`: `{ "code": "OUT_OF_RADIUS", "message": "Sorry, Sharma Kirana delivers within 3 km. This address is 11.12 km away.", "distance_km": 11.12, "radius_km": 3.0 }`. `422 SHOP_LOCATION_NOT_SET`.
+- `409 STOCK_CHANGED`: a line's stock is now below its quantity (or the product was deactivated). In a **second** transaction the line is set to `out_of_stock`, an `out_of_stock` clarification (options = in-stock alternatives from the DB) is created, the order moves to `needs_clarification` and a bot message with `meta.clarification_ids` is posted (the chips). Body:
+```json
+{ "detail": { "code": "STOCK_CHANGED", "message": "Stock changed for Sugar (Loose), please review.",
+              "items": [ { "item_id": 72, "product_name": "Sugar (Loose)", "available_qty": "0.000" } ],
+              "messages": [ "<Message bot, meta.reason = stock_changed>" ], "order": "<Order, status=needs_clarification>" } }
+```
+- `409 PRICE_CHANGED`: a live price differs from the snapshot (up **or** down). In a second transaction the order is re-quoted (billing agent), `requires_reapproval = true`, and a new `bill` message is posted. Confirming again (with no further change) is the approval: it succeeds at the new price and clears the flag. (The dedicated approval card and `approve-price-change` endpoint come in Stage 5.) Body:
+```json
+{ "detail": { "code": "PRICE_CHANGED", "message": "Price changed for Atta (Loose).",
+              "changes": [ { "item_id": 73, "product_name": "Atta (Loose)", "old_price": "45.00", "new_price": "50.00" } ],
+              "old_total": "113.00", "new_total": "123.00",
+              "messages": [ "<Message type=bill, meta.bill.requires_reapproval = true>" ], "order": "<Order>" } }
+```
 
 ### POST /orders/{id}/cancel
-Auth: customer Bearer (before confirmation only) **or** owner Bearer (any time before delivery). Request: `{ "reason": "Changed my mind" }` (optional). Cancelling a confirmed order restores stock in a transaction. Response `200`: `{ "order": "<Order, status=cancelled>" }`. `409 INVALID_TRANSITION` after delivery.
+Auth: customer Bearer **or** guest session (of that conversation; before confirmation only) **or** owner Bearer (the shop's owner, any time before delivery). Request: `{ "reason": "Changed my mind" }`. `reason` is **required for the shopkeeper** (`422 VALIDATION_ERROR`), optional for the customer, max 300 characters. Cancelling an order whose stock was deducted (`confirmed`, `packing`, `out_for_delivery`) puts exactly that stock back in the same transaction. Idempotent: cancelling a cancelled order returns it without restoring again. Posts a `cancelled` system message (with the reason). Response `200`: `{ "order": "<Order, status=cancelled>" }`. `409 INVALID_TRANSITION` for the customer after confirmation and for everyone after `delivered`; `403` another customer's / another shop's order.
 
 ### GET /orders/{id}
-Auth: customer Bearer (own orders only; `403`/`404` otherwise). Response `200`:
+Auth: session (the customer's Bearer or guest token; own orders only: `403`, unknown `404`). Response `200`:
 ```json
 { "order": "<Order>", "timeline": [ { "from_status": "awaiting_confirmation", "to_status": "confirmed", "actor": "customer", "note": null, "created_at": "..." } ] }
 ```
+The chat polls this every 5 seconds while an order is confirmed and not yet delivered/cancelled (and re-reads `GET /conversations/{id}` for the status system messages).
 
 ### GET /owner/orders?status=&q=
-Auth: owner. `status` optional filter (any `OrderStatus`); `q` matches order number or masked phone. Response `200`:
+Auth: owner. Only the owner's shop. `status` (any `OrderStatus`, otherwise `422`): that status only. Without `status` the board is returned: every order except `draft` and `cancelled` (cancelled is a filter). `q`: order number (`1042` or `#1042`), a fragment of the customer's phone, or an item word. Newest activity first, at most 200. Response `200`:
 ```json
-{ "items": [ { "id": 42, "order_no": 1042, "status": "confirmed", "customer_phone_masked": "98****3210", "item_count": 4, "total": "272.00", "payment_method": "cod", "payment_status": "cod", "requested_delivery_text": "kal subah tak", "requested_delivery_at": "2026-10-03T02:30:00Z", "has_problem": false, "created_at": "...", "updated_at": "..." } ] }
+{ "items": [ { "id": 42, "order_no": 1042, "status": "confirmed", "customer_phone_masked": "98****3210", "item_count": 4, "total": "272.00", "payment_method": "cod", "payment_status": "cod", "requested_delivery_text": "kal subah tak", "requested_delivery_at": null, "has_problem": false, "created_at": "...", "updated_at": "..." } ] }
 ```
-Frontend polls every 3 seconds.
+`customer_phone_masked` is `null` for an unverified guest. `has_problem` is true when the price changed and awaits re-approval, a line is out of stock, or the customer has an unanswered question. `item_count` counts lines that are not `removed`. The frontend polls every 3 seconds.
 
 ### GET /owner/orders/{id}
-Auth: owner (other shop's order -> `403`/`404`). Response `200`:
+Auth: owner (another shop's order `403`, unknown `404`). Response `200`:
 ```json
-{ "order": "<Order>", "customer": { "phone_masked": "98****3210" }, "messages": [ "<Message> (customer messages for this order)" ], "timeline": [ "<status event>" ], "agent_runs": [ "<AgentRun>" ] }
+{ "order": "<Order, with items (confidence, status, prices) and clarifications>",
+  "customer": { "phone_masked": "98****3210" },
+  "shop": { "name": "Sharma Kirana", "lat": 18.5074, "lng": 73.8077 },
+  "messages": [ "<Message, the customer's messages that built this order>" ],
+  "bill": "<Bill> | null (null until quoted)",
+  "problems": [ "Price changed: the customer must approve the new bill." ],
+  "allowed_next": [ "packing", "cancelled" ],
+  "timeline": [ "<status event>" ],
+  "agent_runs": [ "<AgentRun, every run linked to this order, oldest first>" ] }
 ```
+`allowed_next` is what the shopkeeper may do now (the state machine); the drawer shows buttons for exactly these.
 
 ### POST /owner/orders/{id}/status
-Auth: owner. Request: `{ "to": "packing", "note": null }`. Allowed: `confirmed->packing`, `packing->out_for_delivery`, `out_for_delivery->delivered`, any pre-delivery -> `cancelled` (with `note` as reason). Writes an `order_status_events` row and a system message in the customer chat. Response `200`: `{ "order": "<Order>" }`. `409 INVALID_TRANSITION` otherwise.
+Auth: owner. Request: `{ "to": "packing", "note": null }`. Allowed: `confirmed -> packing`, `packing -> out_for_delivery`, `out_for_delivery -> delivered`, any pre-delivery status `-> cancelled` (then `note` is the **required** reason; stock restored if it had been deducted). Writes the `order_status_events` row and a system message in the customer's chat. Response `200`: `{ "order": "<Order>" }`. `409 INVALID_TRANSITION` otherwise (including a repeated move, e.g. a double click), `422 VALIDATION_ERROR` (cancel without a reason).
 
 ### GET /owner/orders/{id}/delivery-note
-Auth: owner. Response `200`:
+Auth: owner. Data for the print layout (`/owner/orders/{id}/note`, `window.print()`). Response `200`:
 ```json
-{ "order_no": 1042, "shop_name": "Sharma Kirana", "customer_phone": "9876543210", "delivery_address_text": "Flat 12, Karve Nagar", "delivery_lat": 18.5, "delivery_lng": 73.81, "requested_delivery_text": "kal subah tak", "items": [ { "name": "Atta (Loose)", "qty": "2.000", "unit": "kg", "line_total": "90.00" } ], "total": "272.00", "payment_method": "cod", "created_at": "..." }
+{ "order_no": 1042, "shop_name": "Sharma Kirana", "customer_phone": "9876543210", "delivery_address_text": "Flat 12, Karve Nagar", "delivery_lat": 18.5, "delivery_lng": 73.81, "requested_delivery_text": "kal subah tak", "requested_delivery_at": null,
+  "items": [ { "name": "Atta (Loose)", "qty": "2.000", "unit": "kg", "qty_label": "2 kg", "unit_price": "45.00", "line_total": "90.00" } ],
+  "subtotal": "272.00", "delivery_fee": "0.00", "total": "272.00", "payment_method": "cod", "payment_status": "cod", "created_at": "..." }
 ```
+The full customer phone is returned here (the delivery person needs it); every other owner endpoint returns it masked.
 
 ---
 
@@ -517,3 +561,4 @@ Khata / udhaar / credit: **no endpoints, tables or UI.** Real WhatsApp Business 
 - 2026-10-02: Initial contract (Stage 0). `/health` LIVE; all other Appendix D endpoints specified as PLANNED.
 - 2026-10-02: `GET /shops` (public shop list with search + pagination) added for customer shop discovery.
 - 2026-10-02: Stage 3 LIVE: conversations, claim, messages, clarification answers. Order item gains `product`; clarification options gain `pack`; conversation responses gain `llm_mock`; new parser intent `availability_query`; `502 LLM_FAILED` body carries the stored `messages`.
+- 2026-10-02: Stage 4 LIVE: `bill` messages, quote, confirm (transactional, idempotent, `STOCK_CHANGED` / `PRICE_CHANGED` / `OUT_OF_RADIUS`), cancel with stock restore, customer `GET /orders/{id}`, owner board (`GET /owner/orders`, detail, status, delivery note). New table `order_status_events`. Every order transition writes an event; `system` messages carry `meta.kind` / `status`. The "Order ready" reply now points at the bill (`Bill banaun?` is gone).

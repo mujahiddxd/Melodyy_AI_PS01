@@ -26,6 +26,7 @@ ITEM_STATUSES = (
 CLARIFICATION_KINDS = (
     "ambiguous_product", "pack_size", "out_of_stock", "unmatched", "vague_qty", "unusual_qty", "price_change",
 )
+STATUS_ACTORS = ("customer", "shopkeeper", "system")
 AGENT_NAMES = ("intake", "parser", "matcher", "inventory", "clarifier", "billing", "messaging", "stt", "ocr", "explainer")
 AGENT_STATUSES = ("running", "success", "error", "skipped")
 
@@ -140,3 +141,16 @@ class AgentRun(Base):
     error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     duration_ms: Mapped[int | None] = mapped_column(Integer)
+
+
+class OrderStatusEvent(Base):
+    """One row per order state transition (plan 1.2). Written only by services/order_state_machine.py."""
+    __tablename__ = "order_status_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), index=True)
+    from_status: Mapped[str | None] = mapped_column(Enum(*ORDER_STATUSES, name="order_status", create_type=False))
+    to_status: Mapped[str] = mapped_column(Enum(*ORDER_STATUSES, name="order_status", create_type=False))
+    actor: Mapped[str] = mapped_column(Enum(*STATUS_ACTORS, name="status_actor"))
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
