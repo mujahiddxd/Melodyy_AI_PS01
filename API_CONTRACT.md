@@ -59,13 +59,14 @@ Unexpected server failure (status 500): `{ "detail": "Something went wrong. Plea
 | 409 | `AMENDMENT_NOT_ALLOWED` | Amendment after `out_for_delivery` |
 | 409 | `CONFLICT` | Duplicate phone/email on signup |
 | 413 | `FILE_TOO_LARGE` | Upload over the size limit |
+| 502 | `SMS_FAILED` | OTP SMS provider (MSG91) refused or is not configured |
 | 502 | `UPLOAD_FAILED` | Storage provider (Cloudinary) failed while saving a photo |
 | 422 | `OUT_OF_RADIUS` | Address outside the delivery radius (also from `/confirm`) |
 | 422 | `SHOP_LOCATION_NOT_SET` | Shop has no lat/lng/radius configured |
 | 422 | `VALIDATION_ERROR` | Business-rule validation (use FastAPI default list for schema errors) |
 | 422 | `MESSAGE_TOO_LONG` | Message over 1,000 characters |
 | 429 | `OTP_TOO_MANY_ATTEMPTS` | 6th wrong attempt on one OTP |
-| 429 | `OTP_RATE_LIMITED` | More than 3 OTP requests per phone per 10 minutes |
+| 429 | `OTP_RATE_LIMITED` | More than 3 OTP requests per phone per 10 minutes, or a resend within 30 s |
 | 502 | `LLM_FAILED` | LLM/STT/OCR provider failed after retry (chat shows a friendly message) |
 
 ### 1.5 Enums
@@ -226,43 +227,61 @@ Only active products. `404` if the slug is unknown.
 
 ---
 
-## 4. Stage 2 — Customer OTP, addresses, delivery check (PLANNED)
+## 4. Stage 2 — Customer OTP, addresses, delivery check (LIVE, except `claim`)
+
+Browsing (`GET /shops/{slug}`), `delivery-check` and chat need no login. Only a successful OTP verify issues a customer token.
 
 ### POST /auth/customer/otp/request
-Auth: none. Request: `{ "phone": "9876543210" }` (10 digits, starts 6-9). Response `202`:
+Auth: none. Request: `{ "phone": "9876543210" }`. Phone = 10 digits starting 6-9; `+91 98765 43210` is also accepted and normalised. Response `202`:
 ```json
 { "status": "sent", "expires_in_seconds": 300, "resend_after_seconds": 30, "provider": "mock" }
 ```
-Errors: `429 OTP_RATE_LIMITED` (3 per phone per 10 min). The code is stored only as `sha256(code + phone + OTP_SECRET)`.
+- The code is 6 random digits (CSPRNG, never fixed). The DB stores only `sha256(code + phone + OTP_SECRET)`.
+- A new request invalidates any older unused code for that phone, so only the latest code can verify.
+- `provider` is `mock` | `msg91` (set by `OTP_PROVIDER`). The frontend shows the Demo SMS inbox only for `mock`.
+
+Errors:
+- `429 OTP_RATE_LIMITED` `{ "code", "message", "retry_after_seconds": 27 }`: a second request within 30 s of the last one, or a 4th request within 10 minutes.
+- `502 SMS_FAILED`: the SMS provider refused. This attempt does not count toward the limit.
+- `422`: invalid phone.
 
 ### POST /auth/customer/otp/verify
-Auth: none. Request: `{ "phone": "9876543210", "code": "482913" }`. Response `200`:
+Auth: none. Request: `{ "phone": "9876543210", "code": "482913" }` (`code` = exactly 6 digits). Checks the latest code for that phone. Response `200`:
 ```json
 { "access_token": "eyJ...", "token_type": "bearer", "customer": { "id": 5, "phone": "9876543210", "name": null } }
 ```
-Errors: `400 OTP_INVALID` (include `attempts_left`), `400 OTP_EXPIRED`, `429 OTP_TOO_MANY_ATTEMPTS` (max 5 attempts).
+Creates the customer on first verify and sets `verified_at`. The code is marked consumed.
+Errors:
+- `400 OTP_INVALID` `{ "code", "message", "attempts_left": 3 }`: wrong code. Every attempt counts.
+- `400 OTP_EXPIRED`: no code, code older than 5 minutes, already used, or replaced by a newer one.
+- `429 OTP_TOO_MANY_ATTEMPTS` `{ "code", "message", "attempts_left": 0 }`: the 6th attempt on one code (max 5), even with the right code. The customer must request a new code.
 
 ### GET /auth/customer/otp/demo-inbox?phone=9876543210
-Auth: none. **Only when `OTP_PROVIDER=mock`, else `404`.** UI shows a `MOCK SMS` badge. Response `200`:
+Auth: none. **Only when `OTP_PROVIDER=mock`, else `404`.** The UI shows a `MOCK SMS` badge. Response `200`:
 ```json
 { "messages": [ { "phone": "9876543210", "code": "482913", "created_at": "2026-10-02T09:31:00Z", "expires_at": "2026-10-02T09:36:00Z" } ] }
 ```
-Returns only the latest unexpired, unconsumed code for that phone.
+Returns only the latest unexpired, unconsumed code for that phone, otherwise `{ "messages": [] }`. The plain code lives only in the backend process memory (mock mode), never in the DB.
+
+### GET /customer/me
+Auth: customer. Response `200`: `{ "id": 5, "phone": "9876543210", "name": null }`. Used by the frontend to check that a stored `customer_token` is still valid.
+Auth errors on every `/customer/*` endpoint: `401 UNAUTHORIZED` (missing/invalid/expired token), `403 FORBIDDEN` (a valid token of another role, e.g. an owner token).
 
 ### GET /customer/addresses
-Auth: customer. Response `200`: `{ "items": [ { "id": 3, "label": "Home", "address_text": "Flat 12, Karve Nagar", "lat": 18.50, "lng": 73.81, "created_at": "..." } ] }`
+Auth: customer. Newest first. Response `200`: `{ "items": [ { "id": 3, "label": "Home", "address_text": "Flat 12, Karve Nagar", "lat": 18.50, "lng": 73.81, "created_at": "..." } ] }`
 
 ### POST /customer/addresses
-Auth: customer. Request: `{ "label": "Home", "address_text": "Flat 12, Karve Nagar", "lat": 18.50, "lng": 73.81 }` (`label` = `Home` | `Work` | `Other`). Response `201`: the address object.
+Auth: customer. Request: `{ "label": "Home", "address_text": "Flat 12, Karve Nagar", "lat": 18.50, "lng": 73.81 }`. Validation: `label` = `Home` | `Work` | `Other`; `address_text` 1-500 chars; lat -90..90; lng -180..180. Response `201`: the address object.
 
 ### POST /shops/{slug}/delivery-check
 Auth: none (guests can check). Request: `{ "lat": 18.51, "lng": 73.81 }`. Response `200`:
 ```json
 { "eligible": true, "distance_km": 1.8, "radius_km": 3.0 }
 ```
-Boundary is inclusive (`distance <= radius`). Distance is straight-line haversine. `422 SHOP_LOCATION_NOT_SET` if the shop has no location.
+Boundary is inclusive (`distance <= radius`), decided on the unrounded distance. `distance_km` is rounded to 2 decimals. Distance is straight-line haversine (R = 6371 km). The same `check_delivery()` runs again at order confirm (Stage 4).
+Errors: `404` unknown slug, `422 SHOP_LOCATION_NOT_SET` (`"<shop> hasn't set its delivery area yet."`), `422` invalid lat/lng.
 
-### POST /conversations/{id}/claim
+### POST /conversations/{id}/claim — PLANNED (Stage 3, needs conversations)
 Auth: customer Bearer **and** `X-Guest-Session` of that conversation. Attaches the guest conversation (and its open order) to the customer. Response `200`: `{ "conversation_id": 7, "customer_id": 5 }`.
 
 ---

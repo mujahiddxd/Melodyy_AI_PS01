@@ -3,8 +3,10 @@
 The Google key lives only in the backend .env and is never logged or returned to the client.
 """
 import logging
+import math
 import threading
 import time
+from dataclasses import dataclass
 
 import httpx
 
@@ -21,6 +23,42 @@ _cache: dict[str, tuple[float, list[dict]]] = {}
 _warned_no_key: list[bool] = []
 _lock = threading.Lock()
 _last_call = 0.0
+
+
+EARTH_RADIUS_KM = 6371.0
+
+
+def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Straight-line (great-circle) distance in km: d = 2R*asin(sqrt(sin^2(dphi/2) + cos(phi1)cos(phi2)sin^2(dlam/2)))."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi = p2 - p1
+    dlam = math.radians(lng2 - lng1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlam / 2) ** 2
+    return 2 * EARTH_RADIUS_KM * math.asin(min(1.0, math.sqrt(a)))
+
+
+class ShopLocationNotSet(Exception):
+    """The shop has no map pin or delivery radius yet."""
+
+
+@dataclass(frozen=True)
+class DeliveryCheck:
+    eligible: bool
+    distance_km: float
+    radius_km: float
+
+
+def check_delivery(shop, lat: float, lng: float) -> DeliveryCheck:
+    """Is (lat, lng) inside the shop's delivery radius? The boundary is inclusive (distance <= radius).
+
+    The only place this rule lives: used by POST /shops/{slug}/delivery-check and again at order confirm (Stage 4).
+    The distance is the unrounded value, so a rounded number shown to the user can never flip the answer.
+    """
+    if shop.lat is None or shop.lng is None or shop.delivery_radius_km is None:
+        raise ShopLocationNotSet()
+    radius = float(shop.delivery_radius_km)
+    distance = haversine_km(float(shop.lat), float(shop.lng), lat, lng)
+    return DeliveryCheck(eligible=distance <= radius, distance_km=distance, radius_km=radius)
 
 
 def _google(q: str) -> list[dict]:

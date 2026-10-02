@@ -110,3 +110,44 @@ export interface PublicShopResponse {
   shop: ShopPublic;
   categories: { name: string; products: ProductPublic[] }[];
 }
+
+// ---- Customer (Stage 2)
+export interface OtpRequestResponse {
+  status: "sent";
+  expires_in_seconds: number;
+  resend_after_seconds: number;
+  provider: "mock" | "msg91" | "twilio";
+}
+
+export interface Customer {
+  id: number;
+  phone: string;
+  name: string | null;
+}
+
+export interface CustomerAuthResponse {
+  access_token: string;
+  token_type: "bearer";
+  customer: Customer;
+}
+
+export interface DemoInbox {
+  messages: { phone: string; code: string; created_at: string; expires_at: string }[];
+}
+
+export type AddressLabel = "Home" | "Work" | "Other";
+
+export interface Address {
+  id: number;
+  label: AddressLabel;
+  address_text: string;
+  lat: number;
+  lng: number;
+  created_at: string;
+}
+
+export interface DeliveryCheck {
+  eligible: boolean;
+  distance_km: number;
+  radius_km: number;
+}

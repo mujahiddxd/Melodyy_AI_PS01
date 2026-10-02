@@ -32,17 +32,23 @@ export function setToken(role: TokenRole, token: string | null): void {
 export class ApiError extends Error {
   status: number;
   code?: string;
-  constructor(message: string, status: number, code?: string) {
+  /** Extra fields of a coded error, e.g. attempts_left, retry_after_seconds, distance_km. */
+  data: Record<string, unknown>;
+  constructor(message: string, status: number, code?: string, data: Record<string, unknown> = {}) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.data = data;
   }
 }
 
 type ErrorBody = { detail?: unknown };
 
-function readableDetail(body: ErrorBody | null, fallback: string): { message: string; code?: string } {
+function readableDetail(
+  body: ErrorBody | null,
+  fallback: string,
+): { message: string; code?: string; data?: Record<string, unknown> } {
   const d = body?.detail;
   if (typeof d === "string") return { message: d };
   if (Array.isArray(d)) {
@@ -51,8 +57,8 @@ function readableDetail(body: ErrorBody | null, fallback: string): { message: st
     return { message: msgs.filter(Boolean).join("; ") || fallback };
   }
   if (d && typeof d === "object") {
-    const o = d as { code?: string; message?: string };
-    return { message: o.message ?? fallback, code: o.code };
+    const o = d as { code?: string; message?: string } & Record<string, unknown>;
+    return { message: o.message ?? fallback, code: o.code, data: o };
   }
   return { message: fallback };
 }
@@ -90,8 +96,8 @@ export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T
     } catch {
       // non-JSON error body
     }
-    const { message, code } = readableDetail(body, `Request failed (${res.status})`);
-    const err = new ApiError(message, res.status, code);
+    const { message, code, data } = readableDetail(body, `Request failed (${res.status})`);
+    const err = new ApiError(message, res.status, code, data);
     if (role) handleSessionExpired(role, err);
     throw err;
   }
@@ -99,11 +105,18 @@ export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T
   return (await res.json()) as T;
 }
 
-/** An owner call came back 401: the token is gone or expired. Clear it and send them to log in. */
+export const CUSTOMER_AUTH_EVENT = "customer-auth-changed";
+
+/**
+ * A call came back 401: the token is gone or expired.
+ * Owners are sent to log in; customers just become guests again (they can keep browsing).
+ */
 export function handleSessionExpired(role: TokenRole, e: unknown): boolean {
-  if (!(e instanceof ApiError) || e.status !== 401 || role !== "owner") return false;
-  setToken("owner", null);
-  if (typeof window !== "undefined") window.location.assign("/owner/login?expired=1");
+  if (!(e instanceof ApiError) || e.status !== 401) return false;
+  setToken(role, null);
+  if (typeof window === "undefined") return true;
+  if (role === "owner") window.location.assign("/owner/login?expired=1");
+  else window.dispatchEvent(new Event(CUSTOMER_AUTH_EVENT));
   return true;
 }
 
@@ -135,8 +148,8 @@ export function uploadFile<T>(
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve(body as T);
       } else {
-        const { message, code } = readableDetail(body as ErrorBody | null, `Upload failed (${xhr.status})`);
-        const err = new ApiError(message, xhr.status, code);
+        const { message, code, data } = readableDetail(body as ErrorBody | null, `Upload failed (${xhr.status})`);
+        const err = new ApiError(message, xhr.status, code, data);
         handleSessionExpired(role, err);
         reject(err);
       }

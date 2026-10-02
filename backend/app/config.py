@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     jwt_expire_hours: int = 24
     otp_provider: str = "mock"
     otp_secret: str = "change-me-too"
+    msg91_auth_key: str = ""
+    msg91_template_id: str = ""
     llm_provider: str = "openai"
     llm_api_key: str = ""
     llm_model_text: str = ""

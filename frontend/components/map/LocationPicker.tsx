@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/ui/Toast";
 import { api, ApiError } from "@/lib/api";
 import type { GeoResult } from "@/lib/types";
+import type { CircleSpec, LatLng } from "./MapPicker";
 
 // Leaflet touches `window`, so it must never render on the server.
 const MapPicker = dynamic(() => import("./MapPicker"), {
@@ -17,17 +18,24 @@ const MapPicker = dynamic(() => import("./MapPicker"), {
   ),
 });
 
+/**
+ * Map + place search + "Use my location". Used by the shop setup (pin + radius slider)
+ * and by customers choosing a delivery point (pin + the shop's fixed delivery circle).
+ */
 export function LocationPicker({
-  lat,
-  lng,
-  radiusKm,
-  onRadius,
+  pin,
+  circle,
+  shopMarker,
+  radius,
+  pinHint = "Click the map to drop the pin.",
   onPick,
 }: {
-  lat: number | null;
-  lng: number | null;
-  radiusKm: number;
-  onRadius: (km: number) => void;
+  pin: LatLng | null;
+  circle: CircleSpec | null;
+  shopMarker?: LatLng | null;
+  /** Shows the 0.5-10 km radius slider (shop setup only). */
+  radius?: { valueKm: number; onChange: (km: number) => void };
+  pinHint?: string;
   onPick: (lat: number, lng: number, label?: string) => void;
 }) {
   const toast = useToast();
@@ -118,32 +126,32 @@ export function LocationPicker({
         </ul>
       )}
 
-      <MapPicker lat={lat} lng={lng} radiusKm={radiusKm} onPick={(a, b) => onPick(a, b)} />
+      <MapPicker pin={pin} circle={circle} shopMarker={shopMarker} onPick={(a, b) => onPick(a, b)} />
       <p className="text-sm text-muted">
-        {lat === null || lng === null
-          ? "Click the map to drop your shop pin."
-          : `Pin at ${lat.toFixed(5)}, ${lng.toFixed(5)}. Click the map to move it.`}
+        {pin === null ? pinHint : `Pin at ${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}. Click the map to move it.`}
       </p>
 
-      <div>
-        <label htmlFor="radius" className="eyebrow">
-          Delivery radius: <span className="text-ink">{radiusKm} km</span>
-        </label>
-        <input
-          id="radius"
-          type="range"
-          min={0.5}
-          max={10}
-          step={0.5}
-          value={radiusKm}
-          onChange={(e) => onRadius(parseFloat(e.target.value))}
-          className="mt-2 w-full accent-ink"
-        />
-        <div className="flex justify-between text-xs text-muted">
-          <span>0.5 km</span>
-          <span>10 km</span>
+      {radius && (
+        <div>
+          <label htmlFor="radius" className="eyebrow">
+            Delivery radius: <span className="text-ink">{radius.valueKm} km</span>
+          </label>
+          <input
+            id="radius"
+            type="range"
+            min={0.5}
+            max={10}
+            step={0.5}
+            value={radius.valueKm}
+            onChange={(e) => radius.onChange(parseFloat(e.target.value))}
+            className="mt-2 w-full accent-ink"
+          />
+          <div className="flex justify-between text-xs text-muted">
+            <span>0.5 km</span>
+            <span>10 km</span>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

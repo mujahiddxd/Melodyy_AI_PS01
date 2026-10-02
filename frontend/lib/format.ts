@@ -35,3 +35,12 @@ export function cleanPhone(raw: string): string {
   else if (d.length === 12 && d.startsWith("91")) d = d.slice(2);
   return d;
 }
+
+/** "+91 98••••3210" */
+export function maskPhone(phone: string): string {
+  return `+91 ${phone.slice(0, 2)}••••${phone.slice(-4)}`;
+}
+
+export function km(v: number): string {
+  return `${Number(v.toFixed(v < 10 ? 1 : 0))} km`;
+}

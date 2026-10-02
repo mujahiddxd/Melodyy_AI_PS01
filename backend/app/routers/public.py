@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.errors import api_error
 from app.models import Product, Shop
+from app.schemas.customer import DeliveryCheckIn, DeliveryCheckOut
 from app.schemas.product import CategoryGroup, ProductPublic, PublicShopOut
 from app.schemas.shop import GeoResult, ShopPublic
 from app.services import geo
@@ -34,3 +35,17 @@ def public_shop(slug: str, db: Session = Depends(get_db)):
 @router.get("/geo/search", response_model=list[GeoResult])
 def geo_search(q: str = Query(default="", max_length=200)):
     return geo.search(q)
+
+
+@router.post("/shops/{slug}/delivery-check", response_model=DeliveryCheckOut)
+def delivery_check(slug: str, body: DeliveryCheckIn, db: Session = Depends(get_db)):
+    shop = db.scalar(select(Shop).where(Shop.slug == slug))
+    if shop is None:
+        raise api_error(404, "NOT_FOUND", "Shop not found.")
+    try:
+        result = geo.check_delivery(shop, body.lat, body.lng)
+    except geo.ShopLocationNotSet:
+        raise api_error(422, "SHOP_LOCATION_NOT_SET", f"{shop.name} hasn't set its delivery area yet.")
+    return DeliveryCheckOut(
+        eligible=result.eligible, distance_km=round(result.distance_km, 2), radius_km=result.radius_km
+    )

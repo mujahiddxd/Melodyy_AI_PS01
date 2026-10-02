@@ -276,10 +276,10 @@ export default function SetupPage() {
       <section className="card flex flex-col gap-4">
         <h2 className="text-2xl">Location and delivery radius</h2>
         <LocationPicker
-          lat={pos?.lat ?? null}
-          lng={pos?.lng ?? null}
-          radiusKm={radius}
-          onRadius={setRadius}
+          pin={pos}
+          circle={pos ? { ...pos, radiusKm: radius } : null}
+          radius={{ valueKm: radius, onChange: setRadius }}
+          pinHint="Click the map to drop your shop pin."
           onPick={(lat, lng, label) => {
             setPos({ lat, lng });
             if (label && !form.address_text.trim()) set("address_text", label);

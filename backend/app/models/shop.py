@@ -102,8 +102,7 @@ class Upload(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id"))
-    # customer_id gets its FK in Stage 2, when the customers table exists
-    customer_id: Mapped[int | None] = mapped_column(Integer)
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"))
     kind: Mapped[str] = mapped_column(Enum(*UPLOAD_KINDS, name="upload_kind"))
     url: Mapped[str] = mapped_column(Text)
     public_id: Mapped[str | None] = mapped_column(Text)
