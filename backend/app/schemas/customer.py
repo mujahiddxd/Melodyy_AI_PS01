@@ -101,3 +101,28 @@ class DeliveryCheckOut(BaseModel):
     eligible: bool
     distance_km: float
     radius_km: float
+
+
+class CustomerOrderItemOut(BaseModel):
+    name: str
+    quantity: str | None  # e.g. "2 kg"
+    line_total: str | None
+
+
+class CustomerOrderRow(BaseModel):
+    id: int
+    order_no: int
+    shop_slug: str
+    shop_name: str
+    status: str
+    is_cart: bool  # still being built (not confirmed yet): "Continue" opens the chat
+    item_count: int
+    total: str
+    created_at: datetime
+    confirmed_at: datetime | None
+    items: list[CustomerOrderItemOut]
+
+
+class CustomerOrderList(BaseModel):
+    cart: list[CustomerOrderRow]
+    past: list[CustomerOrderRow]

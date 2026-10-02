@@ -148,14 +148,14 @@ export function useChat(slug: string) {
 
   /** Run one request. `label` is what the customer's bubble shows while it is in flight. */
   const exec = useCallback(
-    async (path: string, json: unknown, label: string) => {
+    async (path: string, json: unknown, label: string, body?: BodyInit) => {
       if (busy.current || !session.current) return;
       busy.current = true;
       setSending(true);
       setPending({ text: label, failed: false });
       setRetryText(null);
       try {
-        const res = await api<ChatResponse>(path, { method: "POST", role: "customer", headers: headers(), json });
+        const res = await api<ChatResponse>(path, { method: "POST", role: "customer", headers: headers(), json, body });
         setPending(null);
         apply(res);
       } catch (e) {
@@ -187,6 +187,21 @@ export function useChat(slug: string) {
       const t = text.trim();
       if (!t || !session.current) return;
       return exec(`/conversations/${session.current.id}/messages`, { type: "text", content: t }, t);
+    },
+    [exec],
+  );
+
+  const sendImage = useCallback(
+    (file: File) => {
+      if (!session.current) return;
+      const form = new FormData();
+      form.append("file", file);
+      return exec(
+        `/conversations/${session.current.id}/messages/image`,
+        undefined,
+        "📷 Scanning photo of list…",
+        form,
+      );
     },
     [exec],
   );
@@ -305,6 +320,6 @@ export function useChat(slug: string) {
 
   return {
     phase, initError, conversation, messages, order, runs, llmMock, sending, pending, retryText,
-    start, send, answer, retry, claim, reset, refresh, confirm, cancelOrder, liveIds, headers,
+    start, send, sendImage, answer, retry, claim, reset, refresh, confirm, cancelOrder, liveIds, headers,
   };
 }

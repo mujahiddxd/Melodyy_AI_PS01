@@ -1,6 +1,6 @@
 import secrets
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, File, Header, UploadFile
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,7 @@ from app.schemas.conversation import (
     AnswerIn, ChatResponse, ClaimOut, ConversationOut, ConversationStateOut, CreateConversationOut, MessageIn,
 )
 from app.services import orders as orders_svc
+from app.services import storage
 
 router = APIRouter(tags=["conversations"])
 MAX_MESSAGE_CHARS = 1000
@@ -54,6 +55,22 @@ def create_conversation(
     shop = db.scalar(select(Shop).where(Shop.slug == slug))
     if shop is None:
         raise api_error(404, "NOT_FOUND", "Shop not found.")
+    if customer is not None:
+        # a logged-in customer picks their cart up again, on any device
+        existing = db.scalar(
+            select(Conversation).join(Order, Order.conversation_id == Conversation.id)
+            .where(Conversation.shop_id == shop.id, Conversation.customer_id == customer.id,
+                   Order.status.in_(OPEN_ORDER_STATUSES))
+            .order_by(Conversation.id.desc()).limit(1)
+        )
+        if existing is not None:
+            msgs = list(db.scalars(select(Message).where(Message.conversation_id == existing.id).order_by(Message.id)))
+            return CreateConversationOut(
+                conversation=ConversationOut.model_validate(existing), guest_session=None,
+                messages=orders_svc.messages_out(msgs),
+                order=orders_svc.serialize_order(db, orders_svc.latest_order(db, existing.id)),
+                llm_mock=get_settings().llm_mock,
+            )
     token = None if customer else f"gs_{secrets.token_urlsafe(24)}"
     conv = Conversation(
         shop_id=shop.id, customer_id=customer.id if customer else None,
@@ -110,6 +127,23 @@ def send_message(body: MessageIn, conv: Conversation = Depends(get_conversation)
         raise api_error(422, "VALIDATION_ERROR", "Message is empty.")
     shop = _shop_of(db, conv)
     return _respond(db, orchestrator.handle_text_message(db, conv, shop, text))
+
+
+@router.post("/conversations/{conversation_id}/messages/image", response_model=ChatResponse)
+async def send_image_message(
+    file: UploadFile = File(...),
+    conv: Conversation = Depends(get_conversation),
+    db: Session = Depends(get_db),
+):
+    if file.content_type not in ("image/jpeg", "image/png", "image/webp"):
+        raise api_error(422, "INVALID_FILE_TYPE", "Please upload a JPEG, PNG, or WebP image.")
+    data = await file.read()
+    if len(data) > 8 * 1024 * 1024:
+        raise api_error(413, "FILE_TOO_LARGE", "Image must be at most 8 MB.")
+    shop = _shop_of(db, conv)
+    media_url, public_id = storage.upload(data, file.content_type, folder="lists")
+    return _respond(db, orchestrator.handle_image_message(db, conv, shop, data, file.content_type, media_url, public_id))
+
 
 
 @router.post("/conversations/{conversation_id}/clarifications/{clarification_id}/answer", response_model=ChatResponse)

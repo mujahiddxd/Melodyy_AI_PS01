@@ -10,7 +10,12 @@ export default function Home() {
     <main className="mx-auto max-w-[1200px] px-6 py-10">
       <nav className="flex items-center justify-between rounded-full bg-white px-6 py-3 shadow-clay">
         <span className="font-display text-xl">Hinglish Order Desk</span>
-        <MockBadge>DEMO</MockBadge>
+        <span className="flex items-center gap-3">
+          <Link href="/orders" className="font-display text-base underline">
+            My orders
+          </Link>
+          <MockBadge>DEMO</MockBadge>
+        </span>
       </nav>
 
       <section className="grid items-center gap-12 py-16 md:grid-cols-2">

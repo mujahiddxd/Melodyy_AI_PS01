@@ -9,6 +9,7 @@ complete_json(system, user, Schema, temperature=0, mock=("parser", text))
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
@@ -46,6 +47,15 @@ class _Retryable(Exception):
     def __init__(self, reason: str, cooldown: float = 0, model_level: bool = False, scope: str = "key"):
         super().__init__(reason)
         self.reason, self.cooldown, self.model_level, self.scope = reason, cooldown, model_level, scope
+
+
+def _csv_unique(values: list[str]) -> list[str]:
+    out: list[str] = []
+    for v in values:
+        v = v.strip()
+        if v and v not in out:
+            out.append(v)
+    return out
 
 
 def _fence_stripped(text: str) -> str:
@@ -118,7 +128,62 @@ def _call_openai(key: str, model: str, system: str, user: str, temperature: floa
         raise _Retryable("unexpected response shape")
 
 
+def _call_gemini_vision(key: str, model: str, system: str, user: str, image_bytes: bytes, mime_type: str, temperature: float) -> str:
+    b64_img = base64.b64encode(image_bytes).decode("ascii")
+    data = _post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+        {"x-goog-api-key": key},
+        {
+            "systemInstruction": {"parts": [{"text": system}]},
+            "contents": [{
+                "role": "user",
+                "parts": [
+                    {"inlineData": {"mimeType": mime_type, "data": b64_img}},
+                    {"text": user},
+                ],
+            }],
+            "generationConfig": {"temperature": temperature, "responseMimeType": "application/json"},
+        },
+    )
+    cands = data.get("candidates") or []
+    if not cands:
+        raise _Retryable("no candidates (blocked or empty)")
+    parts = (cands[0].get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+    if not text.strip():
+        raise _Retryable("empty output")
+    return text
+
+
+def _call_openai_vision(key: str, model: str, system: str, user: str, image_bytes: bytes, mime_type: str, temperature: float) -> str:
+    b64_img = base64.b64encode(image_bytes).decode("ascii")
+    data = _post(
+        "https://api.openai.com/v1/chat/completions",
+        {"Authorization": f"Bearer {key}"},
+        {
+            "model": model,
+            "temperature": temperature,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": system},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_img}"}},
+                        {"type": "text", "text": user},
+                    ],
+                },
+            ],
+        },
+    )
+    try:
+        return data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        raise _Retryable("unexpected response shape")
+
+
 _PROVIDERS = {"gemini": _call_gemini, "openai": _call_openai}
+_VISION_PROVIDERS = {"gemini": _call_gemini_vision, "openai": _call_openai_vision}
 
 
 def _mock(schema: Type[T], mock: tuple[str, str] | None) -> T:
@@ -192,3 +257,65 @@ def complete_json(
             last = f"{label}: invalid output ({type(e).__name__})"
             log.warning("LLM attempt %d failed (%s)", attempts, last)
     raise LLMError(f"LLM call failed after {attempts} attempts: {last}")
+
+
+def complete_vision_json(
+    system: str,
+    prompt: str,
+    image_bytes: bytes,
+    mime_type: str,
+    schema: Type[T],
+    *,
+    temperature: float = 0.0,
+) -> T:
+    """Call vision LLM with image bytes, parse JSON, validate with schema."""
+    s = get_settings()
+    if s.llm_mock:
+        from app.llm.fixtures import DEMO_MESSAGES  # mock OCR "reads" demo message 1, which has canned parser output
+
+        return schema.model_validate({"legible": True, "lines": [DEMO_MESSAGES[1]]})
+
+    call = _VISION_PROVIDERS.get(s.llm_provider)
+    if call is None:
+        raise LLMError(f"Vision not supported for LLM_PROVIDER '{s.llm_provider}'")
+    keys = s.llm_keys
+    if not keys:
+        raise LLMError("LLM_API_KEY is not set")
+
+    # the configured vision model first, then the same text models/fallbacks that already work for chat
+    models = _csv_unique([s.llm_model_vision, *s.llm_models])
+    if not models:
+        raise LLMError("LLM_MODEL_VISION / LLM_MODEL_TEXT is not set")
+    started = time.monotonic()
+    attempts = 0
+    last = "no attempt made"
+    pairs = [(i, m, k) for i, m in enumerate(models) for k in keys]
+
+    def cooling(m: str, k: str) -> bool:
+        return started < _cooldown.get(k, 0) or started < _cooldown.get((k, m), 0)
+
+    ordered = [p for p in pairs if not cooling(p[1], p[2])] + [p for p in pairs if cooling(p[1], p[2])]
+    failed_models: set[int] = set()
+    for pos, model, key in ordered:
+        if pos in failed_models:
+            continue
+        if attempts >= MAX_ATTEMPTS or time.monotonic() - started > CALL_BUDGET_S:
+            break
+        attempts += 1
+        label = f"key#{keys.index(key) + 1}/{model}"
+        try:
+            raw = call(key, model, system, prompt, image_bytes, mime_type, temperature)
+            return schema.model_validate(json.loads(_fence_stripped(raw)))
+        except _Retryable as e:
+            last = f"{label}: {e.reason}"
+            if e.cooldown:
+                _cooldown[key if e.scope == "key" else (key, model)] = time.monotonic() + e.cooldown
+            log.warning("Vision LLM attempt %d failed (%s)", attempts, last)
+            if e.model_level:
+                failed_models.add(pos)
+                time.sleep(0.8)
+        except (json.JSONDecodeError, ValidationError) as e:
+            last = f"{label}: invalid output ({type(e).__name__})"
+            log.warning("Vision LLM attempt %d failed (%s)", attempts, last)
+    raise LLMError(f"Vision LLM call failed after {attempts} attempts: {last}")
+

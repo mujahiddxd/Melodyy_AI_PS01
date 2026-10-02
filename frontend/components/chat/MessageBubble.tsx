@@ -10,6 +10,36 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
     );
   }
   const mine = message.sender === "customer";
+  if (message.type === "image" && message.media_url) {
+    const ocrLines = Array.isArray(message.meta?.ocr_lines) ? (message.meta.ocr_lines as string[]) : [];
+    return (
+      <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+        <div
+          className={`max-w-[85%] border-[3px] border-ink p-3 sm:max-w-[75%] ${
+            mine ? "rounded-3xl rounded-br-md bg-lavender" : "rounded-3xl rounded-bl-md bg-white"
+          }`}
+        >
+          {!mine && <p className="eyebrow mb-1">{message.sender === "shopkeeper" ? "Shop" : "Order desk"}</p>}
+          <div className="overflow-hidden rounded-2xl border-2 border-ink bg-black/5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={message.media_url} alt="Shopping list photo" className="max-h-64 w-auto rounded-xl object-contain" />
+          </div>
+          {ocrLines.length > 0 && (
+            <div className="mt-2 rounded-xl bg-white/80 p-2 text-xs border border-ink/20">
+              <p className="font-bold text-ink">Transcribed list:</p>
+              <ul className="mt-0.5 list-disc pl-4 text-muted">
+                {ocrLines.map((line, idx) => (
+                  <li key={idx} className="text-ink font-medium">{line}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <p className="mt-1 text-right text-[11px] text-muted">{clock(message.created_at)}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
       <div

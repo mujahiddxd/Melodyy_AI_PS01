@@ -278,6 +278,17 @@ Returns only the latest unexpired, unconsumed code for that phone, otherwise `{ 
 Auth: customer. Response `200`: `{ "id": 5, "phone": "9876543210", "name": null }`. Used by the frontend to check that a stored `customer_token` is still valid.
 Auth errors on every `/customer/*` endpoint: `401 UNAUTHORIZED` (missing/invalid/expired token), `403 FORBIDDEN` (a valid token of another role, e.g. an owner token).
 
+### GET /customer/orders
+Auth: customer Bearer (`401 UNAUTHORIZED` otherwise). The logged-in customer's carts and past orders, newest first, at most 100. Prices are the stored order totals / line totals (never recomputed by the client). A cart is an order still being built (`draft`, `needs_clarification`, `awaiting_confirmation`) that has at least one item.
+```json
+{ "cart": [ "<row>" ], "past": [ "<row>" ] }
+```
+Row: `{ "id": 12, "order_no": 1012, "shop_slug": "sharma-kirana", "shop_name": "Sharma Kirana", "status": "confirmed", "is_cart": false, "item_count": 2, "total": "113.00", "created_at": "...", "confirmed_at": "...|null", "items": [ { "name": "Atta (Loose)", "quantity": "2 kg", "line_total": "90.00|null" } ] }`
+
+**Cart resume**: `POST /shops/{slug}/conversations` with a customer Bearer returns the customer's latest conversation for that shop that still has an open order (`201`, `guest_session: null`, existing `messages` and `order`) instead of creating an empty one.
+
+**OCR**: `POST /conversations/{id}/messages/image` now uses `LLM_MODEL_VISION`, then `LLM_MODEL_TEXT` and `LLM_MODEL_FALLBACKS`; an OCR provider failure returns `502 LLM_FAILED` with the stored messages, like text messages.
+
 ### GET /customer/addresses
 Auth: customer. Newest first. Response `200`: `{ "items": [ { "id": 3, "label": "Home", "address_text": "Flat 12, Karve Nagar", "lat": 18.50, "lng": 73.81, "created_at": "..." } ] }`
 
@@ -562,3 +573,4 @@ Khata / udhaar / credit: **no endpoints, tables or UI.** Real WhatsApp Business 
 - 2026-10-02: `GET /shops` (public shop list with search + pagination) added for customer shop discovery.
 - 2026-10-02: Stage 3 LIVE: conversations, claim, messages, clarification answers. Order item gains `product`; clarification options gain `pack`; conversation responses gain `llm_mock`; new parser intent `availability_query`; `502 LLM_FAILED` body carries the stored `messages`.
 - 2026-10-02: Stage 4 LIVE: `bill` messages, quote, confirm (transactional, idempotent, `STOCK_CHANGED` / `PRICE_CHANGED` / `OUT_OF_RADIUS`), cancel with stock restore, customer `GET /orders/{id}`, owner board (`GET /owner/orders`, detail, status, delivery note). New table `order_status_events`. Every order transition writes an event; `system` messages carry `meta.kind` / `status`. The "Order ready" reply now points at the bill (`Bill banaun?` is gone).
+- 2026-10-02: `GET /customer/orders` (cart + past orders), cart resume on `POST /shops/{slug}/conversations` for logged-in customers, OCR model selection fixed and OCR failures return `502 LLM_FAILED`.

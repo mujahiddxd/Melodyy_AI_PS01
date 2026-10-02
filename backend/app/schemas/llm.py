@@ -80,3 +80,11 @@ class ClarifierOut(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     message: str = Field(min_length=1, max_length=800)
+
+
+class OcrOut(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    legible: bool = True
+    lines: list[str] = Field(default_factory=list)
+

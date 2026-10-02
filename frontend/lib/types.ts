@@ -447,3 +447,22 @@ export interface DeliveryNote {
   payment_status: "pending" | "paid" | "cod" | null;
   created_at: string;
 }
+
+export interface CustomerOrderRow {
+  id: number;
+  order_no: number;
+  shop_slug: string;
+  shop_name: string;
+  status: OrderStatus;
+  is_cart: boolean;
+  item_count: number;
+  total: string;
+  created_at: string;
+  confirmed_at: string | null;
+  items: { name: string; quantity: string | null; line_total: string | null }[];
+}
+
+export interface CustomerOrderList {
+  cart: CustomerOrderRow[];
+  past: CustomerOrderRow[];
+}

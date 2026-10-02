@@ -210,6 +210,9 @@ export default function ChatPage() {
         </Link>
         <h1 className="min-w-0 flex-1 truncate text-2xl">{shop ? shop.name : "Order chat"}</h1>
         {chat.llmMock && <MockBadge>DEMO / MOCK AI</MockBadge>}
+        <Link href="/orders" className="btn-secondary !py-2 text-sm">
+          My orders
+        </Link>
         <button type="button" className="btn-secondary !py-2 text-sm" onClick={() => setVerifyOpen(true)}>
           {customer ? "✓ Verified · Address" : "Verify & address"}
         </button>
@@ -299,7 +302,7 @@ export default function ChatPage() {
             </div>
 
             <AgentStrip active={chat.sending} runs={runs} />
-            <Composer disabled={chat.sending} onSend={chat.send} />
+            <Composer disabled={chat.sending} onSend={chat.send} onSendImage={chat.sendImage} />
           </section>
 
           <aside className="hidden lg:block">

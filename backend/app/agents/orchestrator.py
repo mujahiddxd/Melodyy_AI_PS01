@@ -24,6 +24,7 @@ from app.agents.intake import IntakeResult, run_intake
 from app.agents.inventory import run_inventory
 from app.agents.matcher import run_matcher
 from app.agents.messaging import run_messaging
+from app.agents.ocr import run_ocr
 from app.agents.parser import TooManyItems, run_parser
 from app.agents.types import ItemPlan
 from app.llm.client import LLMError
@@ -123,10 +124,12 @@ def _finish_order_message(
         _say(t, lang_svc.pending_reminder(_lang(t.conv), names), meta)
     else:
         t.ctx.skipped("clarifier", "nothing left to ask")
-        # name what this message added, so "order ready" never reads like a repeat of the previous reply
-        _say(t, lang_svc.ready_after_adding(_lang(t.conv), added or []), meta)
-        if order.status == "awaiting_confirmation":  # the billing agent runs whenever the order becomes ready
+        if order.status == "awaiting_confirmation":
+            # name what this message added, so "order ready" never reads like a repeat of the previous reply
+            _say(t, lang_svc.ready_after_adding(_lang(t.conv), added or []), meta)
             t.extra.append(run_billing(t.ctx, order, t.shop))
+        else:
+            _say(t, lang_svc.fixed("empty_order", _lang(t.conv)), meta)
 
 
 def _process_items(t: _Turn, parsed, intake: IntakeResult) -> None:
@@ -274,9 +277,12 @@ def _failure(t: _Turn, new_msgs: list[Message]) -> ChatResult:
     return res
 
 
-def _new_turn(db: Session, conv: Conversation, shop: Shop, customer_text: str, meta: dict | None = None) -> tuple[_Turn, Message]:
+def _new_turn(
+    db: Session, conv: Conversation, shop: Shop, customer_text: str, meta: dict | None = None,
+    msg_type: str = "text", media_url: str | None = None,
+) -> tuple[_Turn, Message]:
     ctx = RunCtx(db=db, conversation_id=conv.id)
-    cust = Message(conversation_id=conv.id, sender="customer", type="text", content=customer_text, meta=meta)
+    cust = Message(conversation_id=conv.id, sender="customer", type=msg_type, content=customer_text, media_url=media_url, meta=meta)
     db.add(cust)
     db.commit()  # the customer's message is kept even if a later step fails
     ctx.message_id = cust.id
@@ -290,9 +296,9 @@ def _new_turn(db: Session, conv: Conversation, shop: Shop, customer_text: str, m
     return t, cust
 
 
-def handle_text_message(db: Session, conv: Conversation, shop: Shop, text: str) -> ChatResult:
-    t, cust = _new_turn(db, conv, shop, text)
-    msgs = [cust]
+def _execute_turn(t: _Turn, msgs: list[Message], text: str) -> ChatResult:
+    db = t.ctx.db
+    conv = t.conv
     try:
         prev_language, prev_script = conv.language, conv.script
         intake = run_intake(t.ctx, text, t.index.vocabulary())
@@ -367,6 +373,53 @@ def handle_text_message(db: Session, conv: Conversation, shop: Shop, text: str) 
     except (LLMError, ValidationError) as e:
         log.warning("LLM step failed, nothing written to the order: %s", e)
         return _failure(t, msgs)
+
+
+def handle_text_message(db: Session, conv: Conversation, shop: Shop, text: str) -> ChatResult:
+    t, cust = _new_turn(db, conv, shop, text)
+    return _execute_turn(t, [cust], text)
+
+
+def handle_image_message(
+    db: Session, conv: Conversation, shop: Shop, image_bytes: bytes, mime_type: str,
+    media_url: str, public_id: str | None = None,
+) -> ChatResult:
+    ocr_ctx = RunCtx(db=db, conversation_id=conv.id)
+    try:
+        ocr_res = run_ocr(ocr_ctx, image_bytes, mime_type)
+    except (LLMError, ValidationError) as e:
+        log.warning("OCR failed: %s", e)
+        t, cust = _new_turn(
+            db, conv, shop, "[Photo of shopping list]",
+            meta={"ocr_lines": [], "legible": False, "media_public_id": public_id}, msg_type="image", media_url=media_url,
+        )
+        t.ctx.run_ids = ocr_ctx.run_ids + t.ctx.run_ids
+        return _failure(t, [cust])
+    if not ocr_res.legible or not ocr_res.lines:
+        t, cust = _new_turn(
+            db, conv, shop, "[Photo of shopping list]",
+            meta={"ocr_lines": [], "legible": False, "media_public_id": public_id},
+            msg_type="image", media_url=media_url,
+        )
+        t.ctx.run_ids = ocr_ctx.run_ids + t.ctx.run_ids
+        lang = _lang(conv)
+        unclear_msg = {
+            "hinglish": "Photo saaf nahi dikh rahi hai. Kripya saaf photo bhejiye ya items likh kar bhejiye.",
+            "hindi": "फ़ोटो साफ़ नहीं दिख रही है। कृपया साफ़ फ़ोटो भेजिए या लिखकर बताइए।",
+            "marathi": "फोटो स्पष्ट दिसत नाही. कृपया स्पष्ट फोटो पाठवा किंवा लिहून सांगा.",
+            "english": "The photo is not clear enough to read. Please send a clearer photo or type the items.",
+        }.get(lang, "The photo is not clear enough to read. Please send a clearer photo or type the items.")
+        _say(t, unclear_msg, {"reason": "illegible_photo"})
+        return _finalize(t, [cust])
+
+    transcription = ", ".join(ocr_res.lines)
+    t, cust = _new_turn(
+        db, conv, shop, transcription,
+        meta={"ocr_lines": ocr_res.lines, "legible": True, "media_public_id": public_id},
+        msg_type="image", media_url=media_url,
+    )
+    t.ctx.run_ids = ocr_ctx.run_ids + t.ctx.run_ids
+    return _execute_turn(t, [cust], transcription)
 
 
 def handle_clarification_answer(
