@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" role="img" aria-label="Shop placeholder">
+  <rect width="800" height="450" fill="#C3B1F5"/>
+  <rect x="140" y="170" width="520" height="220" rx="28" fill="#fff" stroke="#17151F" stroke-width="6"/>
+  <path d="M120 170 L160 90 H640 L680 170 Z" fill="#F9D56E" stroke="#17151F" stroke-width="6" stroke-linejoin="round"/>
+  <rect x="340" y="250" width="120" height="140" rx="16" fill="#B9E4A1" stroke="#17151F" stroke-width="6"/>
+  <rect x="190" y="230" width="110" height="80" rx="14" fill="#A8CCF4" stroke="#17151F" stroke-width="6"/>
+  <rect x="500" y="230" width="110" height="80" rx="14" fill="#A8CCF4" stroke="#17151F" stroke-width="6"/>
+</svg>

@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #F5F1E8;
+  background-image: radial-gradient(#17151F14 1px, transparent 1px);
+  background-size: 22px 22px;
+  font-family: var(--font-sans), Outfit, sans-serif;
+  color: #17151F;
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display), "Bricolage Grotesque", sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+@layer components {
+  .card { @apply bg-white border-[3px] border-ink rounded-card shadow-brutal p-6; }
+  .btn-primary { @apply inline-flex items-center justify-center gap-2 bg-ink text-white rounded-full px-6 py-3 font-semibold shadow-brutal-purple transition duration-150 ease-out hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:opacity-50 disabled:pointer-events-none; }
+  .btn-secondary { @apply inline-flex items-center justify-center gap-2 bg-white text-ink border-[3px] border-ink rounded-full px-6 py-3 font-semibold shadow-brutal-sm transition duration-150 ease-out hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:opacity-50 disabled:pointer-events-none; }
+  .chip { @apply bg-white rounded-full px-4 py-2 text-sm shadow-clay; }
+  .chip-active { @apply bg-mint border-[3px] border-ink shadow-brutal-sm; }
+  .badge { @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-bold; }
+  .input { @apply w-full bg-white rounded-input px-4 py-3 shadow-clay outline-none placeholder:text-muted focus:ring-[3px] focus:ring-ink; }
+  .eyebrow { @apply text-xs uppercase tracking-widest text-muted font-semibold; }
+}
