@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16
+    container_name: hod-postgres
+    environment:
+      POSTGRES_USER: hod
+      POSTGRES_PASSWORD: hod
+      POSTGRES_DB: hod
+    ports:
+      - "5433:5432"
+    volumes:
+      - hod_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hod -d hod"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  hod_pgdata:

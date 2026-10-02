@@ -1,0 +1,44 @@
+name,brand,category,sell_mode,pack_size,pack_unit,price,stock_qty,low_stock_threshold,max_normal_qty,aliases,shelf
+Aashirvaad Atta 1kg,Aashirvaad,Atta & Flour,pack,1,kg,58,30,5,10,atta|aata|gehu ka atta|आटा|kanik|कणिक|ashirvad,A1
+Aashirvaad Atta 5kg,Aashirvaad,Atta & Flour,pack,5,kg,265,12,3,4,atta|aata|gehu ka atta|आटा|kanik|कणिक|ashirvad,A1
+Atta (Loose),,Atta & Flour,loose,1,kg,45,40,10,15,atta|aata|loose atta|खुला आटा|आटा,A1
+Besan 500g,Rajdhani,Atta & Flour,pack,500,g,58,15,5,5,besan|बेसन|gram flour,A2
+Sugar (Loose),,Sugar & Salt,loose,1,kg,46,50,10,10,sugar|cheeni|chini|shakkar|चीनी|साखर|sakhar,A3
+Tata Salt 1kg,Tata,Sugar & Salt,pack,1,kg,28,40,10,3,salt|namak|नमक|meeth|मीठ|tata namak,A3
+Basmati Rice (Loose),India Gate,Rice,loose,1,kg,110,35,10,15,rice|chawal|चावल|basmati|tandul|तांदूळ,A4
+Kolam Rice (Loose),,Rice,loose,1,kg,60,45,10,20,rice|chawal|चावल|kolam|tandul|तांदूळ,A4
+Poha (Loose),,Rice,loose,1,kg,60,20,5,5,poha|पोहे|pohe,A4
+Toor Dal (Loose),,Dal,loose,1,kg,150,25,8,5,dal|daal|toor dal|arhar|tur|तूर डाळ|डाळ|डाल,A5
+Moong Dal (Loose),,Dal,loose,1,kg,130,20,8,5,dal|daal|moong dal|mung|मूग डाळ|डाळ,A5
+Chana Dal (Loose),,Dal,loose,1,kg,95,22,8,5,dal|daal|chana dal|harbara|चणा डाळ|डाळ,A5
+Masoor Dal (Loose),,Dal,loose,1,kg,90,18,8,5,dal|daal|masoor dal|lal dal|मसूर डाळ|डाळ,A5
+Fortune Sunflower Oil 1L,Fortune,Oil,pack,1,l,155,24,5,6,tel|oil|तेल|sunflower|refined oil|sunflower tel,B1
+Fortune Sunflower Oil 5L,Fortune,Oil,pack,5,l,745,8,2,2,tel|oil|तेल|sunflower|refined oil|sunflower tel,B1
+Fortune Groundnut Oil 1L,Fortune,Oil,pack,1,l,190,15,5,4,tel|oil|तेल|groundnut|moongfali tel|shengdana tel|peanut oil,B1
+Fortune Groundnut Oil 5L,Fortune,Oil,pack,5,l,920,6,2,2,tel|oil|तेल|groundnut|moongfali tel|shengdana tel|peanut oil,B1
+Dhara Mustard Oil 1L,Dhara,Oil,pack,1,l,180,18,5,4,tel|oil|तेल|mustard|sarson tel|sarso|मोहरी तेल,B1
+Dhara Mustard Oil 5L,Dhara,Oil,pack,5,l,870,7,2,2,tel|oil|तेल|mustard|sarson tel|sarso|मोहरी तेल,B1
+Amul Butter 100g,Amul,Dairy,pack,100,g,54,0,5,6,butter|makkhan|मक्खन|loni|लोणी|amool butter|amul,C1
+Amul Butter 500g,Amul,Dairy,pack,500,g,275,6,2,2,butter|makkhan|मक्खन|loni|लोणी|amool butter|amul,C1
+Mother Dairy Butter 100g,Mother Dairy,Dairy,pack,100,g,56,14,5,6,butter|makkhan|मक्खन|loni|लोणी,C1
+Amul Taaza Milk 500ml,Amul,Dairy,pack,500,ml,29,30,8,10,milk|doodh|dudh|दूध|amul milk,C2
+Amul Taaza Milk 1L,Amul,Dairy,pack,1,l,56,20,8,6,milk|doodh|dudh|दूध|amul milk,C2
+Amul Masti Dahi 400g,Amul,Dairy,pack,400,g,35,12,4,4,dahi|curd|दही|dahee,C2
+Amul Paneer 200g,Amul,Dairy,pack,200,g,90,10,3,4,paneer|पनीर|cottage cheese,C2
+Eggs (Dozen),,Eggs,pack,1,dozen,84,15,4,5,eggs|anda|ande|अंडे|अंडी|egg,C3
+Onion (Loose),,Vegetables,loose,1,kg,35,60,15,10,onion|pyaz|pyaaz|kanda|कांदा|प्याज,D1
+Potato (Loose),,Vegetables,loose,1,kg,30,60,15,10,potato|aloo|alu|batata|बटाटा|आलू,D1
+Parle-G 50g,Parle,Biscuits & Snacks,pack,50,g,5,80,20,20,parle-g|parle g|parleji|biscuit|biscuits|बिस्किट,E1
+Parle-G 250g,Parle,Biscuits & Snacks,pack,250,g,25,30,10,10,parle-g|parle g|parleji|biscuit|biscuits|बिस्किट,E1
+Maggi Noodles 70g,Maggi,Biscuits & Snacks,pack,70,g,14,3,5,24,maggi|noodles|maggie|मैगी,E2
+Tata Tea Gold 250g,Tata,Tea & Coffee,pack,250,g,150,14,4,4,tea|chai|chai patti|चायपत्ती|चहा|tata tea,F1
+Red Label Tea 250g,Brooke Bond,Tea & Coffee,pack,250,g,135,16,4,4,tea|chai|chai patti|चायपत्ती|चहा|red label,F1
+Everest Haldi 100g,Everest,Spices,pack,100,g,38,20,5,4,haldi|turmeric|हळद|हल्दी,F2
+Everest Red Chilli Powder 100g,Everest,Spices,pack,100,g,55,18,5,4,mirch|lal mirch|red chilli|chilli powder|मिर्च|तिखट|tikhat,F2
+Everest Garam Masala 50g,Everest,Spices,pack,50,g,70,15,5,4,garam masala|masala|मसाला,F2
+Jeera (Loose),,Spices,loose,1,kg,380,5,2,1,jeera|cumin|जीरा|jire,F2
+Modern Bread 400g,Modern,Bakery,pack,400,g,45,10,4,4,bread|pav|double roti|ब्रेड,G1
+Surf Excel Easy Wash 1kg,Surf Excel,Household,pack,1,kg,130,12,4,4,surf|detergent|washing powder|सर्फ,H1
+Vim Dishwash Bar 200g,Vim,Household,pack,200,g,20,25,6,6,vim|bartan sabun|dishwash|bar,H1
+Lifebuoy Soap 100g,Lifebuoy,Household,pack,100,g,32,20,6,6,soap|sabun|साबण|साबुन|lifebuoy,H2
+Colgate Toothpaste 100g,Colgate,Household,pack,100,g,58,15,5,4,toothpaste|paste|colgate|टूथपेस्ट|manjan,H2

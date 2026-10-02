@@ -91,8 +91,58 @@ export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T
       // non-JSON error body
     }
     const { message, code } = readableDetail(body, `Request failed (${res.status})`);
-    throw new ApiError(message, res.status, code);
+    const err = new ApiError(message, res.status, code);
+    if (role) handleSessionExpired(role, err);
+    throw err;
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/** An owner call came back 401: the token is gone or expired. Clear it and send them to log in. */
+export function handleSessionExpired(role: TokenRole, e: unknown): boolean {
+  if (!(e instanceof ApiError) || e.status !== 401 || role !== "owner") return false;
+  setToken("owner", null);
+  if (typeof window !== "undefined") window.location.assign("/owner/login?expired=1");
+  return true;
+}
+
+/** multipart upload with progress (fetch can't report upload progress). */
+export function uploadFile<T>(
+  path: string,
+  file: File,
+  role: TokenRole,
+  onProgress?: (percent: number) => void,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_URL}${path}`);
+    const token = getToken(role);
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable && onProgress) onProgress(Math.round((ev.loaded / ev.total) * 100));
+    };
+    xhr.onerror = () => reject(new ApiError("Can't reach the server. Check your connection and try again.", 0));
+    xhr.ontimeout = () => reject(new ApiError("The upload timed out. Please try again.", 0));
+    xhr.timeout = 60000;
+    xhr.onload = () => {
+      let body: unknown = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        // non-JSON body
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(body as T);
+      } else {
+        const { message, code } = readableDetail(body as ErrorBody | null, `Upload failed (${xhr.status})`);
+        const err = new ApiError(message, xhr.status, code);
+        handleSessionExpired(role, err);
+        reject(err);
+      }
+    };
+    const form = new FormData();
+    form.append("file", file);
+    xhr.send(form);
+  });
 }

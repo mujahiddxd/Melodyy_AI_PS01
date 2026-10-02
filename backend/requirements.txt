@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+sqlalchemy>=2.0
+psycopg[binary]
+alembic
+pydantic>=2
+pydantic-settings
+passlib[bcrypt]
+bcrypt<4.1
+python-jose[cryptography]
+rapidfuzz
+httpx
+cloudinary
+python-multipart
+qrcode[pil]
+pytest
